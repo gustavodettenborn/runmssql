@@ -15,6 +15,7 @@ services:
       - MSSQL_USERNAME=${MSSQL_USERNAME}
       - MSSQL_PASSWORD=${MSSQL_PASSWORD}
       - MSSQL_TRUSTED_CONNECTION=${MSSQL_TRUSTED_CONNECTION:-false}
+    user: "${UID:-1000}:${GID:-1000}"
     volumes:
       # Compartilha diretório local para resultados
       - ${RESULT_DIR}:/app/results
@@ -27,6 +28,8 @@ services:
     restart: "no"
     stdin_open: true
     tty: true
+    # Remove o comando padrão para permitir execução manual
+    command: /bin/bash
 
 networks:
   mssql-network:

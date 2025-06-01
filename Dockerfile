@@ -53,6 +53,3 @@ USER appuser
 # Define variáveis de ambiente para usar o venv
 ENV PATH="/app/venv/bin:$PATH"
 ENV VIRTUAL_ENV="/app/venv"
-
-# Define o comando padrão
-CMD ["python3", "run_sql_csv.py"]
