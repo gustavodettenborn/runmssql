@@ -1,0 +1,33 @@
+version: '3.8'
+
+services:
+  mssql-client:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: mssql-pyodbc-client
+    env_file:
+      - .env
+    environment:
+      # Variáveis de ambiente do arquivo .env
+      - MSSQL_SERVER=${MSSQL_SERVER}
+      - MSSQL_DATABASE=${MSSQL_DATABASE}
+      - MSSQL_USERNAME=${MSSQL_USERNAME}
+      - MSSQL_PASSWORD=${MSSQL_PASSWORD}
+      - MSSQL_TRUSTED_CONNECTION=${MSSQL_TRUSTED_CONNECTION:-false}
+    volumes:
+      # Compartilha diretório local para resultados
+      - ${RESULT_DIR}:/app/results
+      # Compartilha scripts SQL se necessário
+      - ${SQL_SCRIPT}:/app/sql_scripts:ro
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    networks:
+      - mssql-network
+    restart: "no"
+    stdin_open: true
+    tty: true
+
+networks:
+  mssql-network:
+    driver: bridge
