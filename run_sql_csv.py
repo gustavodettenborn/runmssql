@@ -52,60 +52,71 @@ class SQLToCsv:
             return False
 
     def execute_sql_to_csv(self, sql_query, csv_filename, chunk_size=10000):
-        """Executa query SQL e salva resultado em CSV
-
-        Args:
-            sql_query: Query SQL a ser executada
-            csv_filename: Nome do arquivo CSV de saída
-            chunk_size: Tamanho do chunk para queries grandes
-
-        """
+        """Executa query SQL e salva resultado em CSV"""
         if not self.connection:
-            print("Conexão não estabelecida. Execute connect() primeiro.")
+            print("✗ Sem conexão com o banco")
             return False
 
         try:
-            # Garante que o diretório de resultados existe
-            results_dir = "/app/results"
-            # os.makedirs(results_dir, exist_ok=True)
+            print(f"\nExecutando query...")
+            print(f"Query: {sql_query[:100]}...")
 
-            # Caminho completo para o arquivo CSV
-            csv_path = os.path.join(results_dir, csv_filename)
+            # Executa a query usando apenas cursor pyodbc
+            cursor = self.connection.cursor()
+            cursor.execute(sql_query)
 
-            print(f"Executando query...")
-            print(f"Salvando em: {csv_path}")
+            # Obtém os nomes das colunas
+            columns = [column[0] for column in cursor.description]
 
-            # Executa a query e converte para DataFrame
-            df = pd.read_sql(sql_query, self.connection, chunksize=chunk_size)
+            # Prepara o arquivo CSV manualmente
+            output_path = f"/app/results/{csv_filename}"
 
-            # Se retornou chunks, processa em partes
-            if hasattr(df, "__iter__"):
-                first_chunk = True
-                total_rows = 0
+            with open(output_path, 'w', encoding='utf-8', newline='') as csvfile:
+                import csv
+                writer = csv.writer(csvfile, quoting=csv.QUOTE_ALL)
 
-                for chunk in df:
-                    if first_chunk:
-                        chunk.to_csv(csv_path, index=False, encoding="utf-8-sig")
-                        first_chunk = False
-                    else:
-                        chunk.to_csv(
-                            csv_path,
-                            mode="a",
-                            header=False,
-                            index=False,
-                            encoding="utf-8-sig",
-                        )
+                # Escreve o cabeçalho
+                writer.writerow(columns)
 
-                    total_rows += len(chunk)
-                    print(f"Processadas {total_rows} linhas...")
+                # Processa linha por linha
+                row_count = 0
+                while True:
+                    rows = cursor.fetchmany(chunk_size)
+                    if not rows:
+                        break
 
-                print(f"✓ Query executada com sucesso! Total: {total_rows} linhas")
+                    for row in rows:
+                        # Converte cada valor para string preservando tipos originais
+                        clean_row = []
+                        for value in row:
+                            # print(f"Valor original: {value} (tipo: {type(value)})")
+                            if value is None:
+                                clean_row.append('')
+                            elif isinstance(value, bool):
+                                # Preserva booleanos como True/False
+                                # clean_row.append(str(value))
+                                if value:
+                                    clean_row.append("1")
+                                else:
+                                    clean_row.append("0")
+                            elif isinstance(value, (int, float)):
+                                # Para números, converte diretamente
+                                if isinstance(value, float) and value.is_integer():
+                                    clean_row.append(str(int(value)))
+                                else:
+                                    clean_row.append(str(value))
+                            else:
+                                # Para outros tipos, converte para string
+                                clean_row.append(str(value))
 
-            else:
-                # Query pequena, processa de uma vez
-                df.to_csv(csv_path, index=False, encoding="utf-8-sig")
-                print(f"✓ Query executada com sucesso! {len(df)} linhas salvas em {csv_filename}")
+                        writer.writerow(clean_row)
+                        row_count += 1
 
+            cursor.close()
+
+            print(f"✓ Query executada com sucesso!")
+            print(f"✓ {row_count} registros salvos em {output_path}")
+            print(f"✓ Valores preservados sem conversão automática")
             return True
 
         except Exception as e:
@@ -113,19 +124,12 @@ class SQLToCsv:
             return False
 
     def execute_sql_file_to_csv(self, sql_file_path, csv_filename, chunk_size=10000):
-        """Lê arquivo SQL e executa, salvando resultado em CSV
-
-        Args:
-            sql_file_path: Caminho para o arquivo .sql
-            csv_filename: Nome do arquivo CSV de saída
-            chunk_size: Tamanho do chunk para queries grandes
-
-        """
+        """Lê arquivo SQL e executa, salvando resultado em CSV"""
         try:
-            with open(sql_file_path, encoding="utf-8") as file:
+            with open(sql_file_path, 'r', encoding='utf-8') as file:
                 sql_query = file.read()
 
-            print(f"Executando script: {sql_file_path}")
+            print(f"✓ Arquivo SQL lido: {sql_file_path}")
             return self.execute_sql_to_csv(sql_query, csv_filename, chunk_size)
 
         except Exception as e:
