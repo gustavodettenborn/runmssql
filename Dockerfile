@@ -1,55 +1,44 @@
 FROM ubuntu:24.10
 
-# Evita prompts interativos durante a instalação
-ENV DEBIAN_FRONTEND=noninteractive
+# Configurações para build otimizado
+ENV DEBIAN_FRONTEND=noninteractive \
+    PIP_NO_CACHE_DIR=1 \
+    PIP_DISABLE_PIP_VERSION_CHECK=1
 
-# Atualiza o sistema e instala dependências básicas
+# Instala dependências base e MSSQL em camadas combinadas
 RUN apt-get update && apt-get install -y \
     curl \
     gnupg2 \
-    software-properties-common \
     python3 \
     python3-pip \
     python3-venv \
-    python3-dev \
-    build-essential \
-    && rm -rf /var/lib/apt/lists/*
+    --no-install-recommends \
+    && apt-get clean \
+    && rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/*
 
-# Copia o script de instalação do MSSQL
+# Instala MSSQL drivers
 COPY mssql.sh /tmp/mssql.sh
-RUN chmod +x /tmp/mssql.sh
+RUN chmod +x /tmp/mssql.sh && \
+    /tmp/mssql.sh && \
+    rm -f /tmp/mssql.sh
 
-# Executa o script de instalação do MSSQL
-RUN /tmp/mssql.sh
+# Configura usuário, diretórios e ambiente Python em uma única camada
+RUN useradd -m -s /bin/bash appuser && \
+    mkdir -p /app/results && \
+    python3 -m venv /app/venv && \
+    /app/venv/bin/pip install --upgrade pip && \
+    /app/venv/bin/pip install pandas pyodbc && \
+    chown -R appuser:appuser /app && \
+    echo 'export PATH="$PATH:/opt/mssql-tools18/bin"' >> /etc/bash.bashrc && \
+    printf "\n[openssl_init]\nssl_conf = ssl_sect\n[ssl_sect]\nsystem_default = system_default_sect\n[system_default_sect]\nMinProtocol = TLSv1.0\nCipherString = DEFAULT@SECLEVEL=1\n" >> /etc/ssl/openssl.cnf
 
-# Adiciona o PATH do mssql-tools ao bashrc global
-RUN echo 'export PATH="$PATH:/opt/mssql-tools18/bin"' >> /etc/bash.bashrc
+# Copia o script Python para o container
+COPY run_sql_csv.py /app/run_sql_csv.py
 
-# Cria um usuário não-root para executar a aplicação
-RUN useradd -m -s /bin/bash appuser
-
-# Cria um diretório de trabalho
 WORKDIR /app
-
-# Cria ambiente virtual Python
-RUN python3 -m venv /app/venv
-
-# Ativa o ambiente virtual e instala as dependências
-RUN /app/venv/bin/pip install --upgrade pip && \
-    /app/venv/bin/pip install --no-cache-dir \
-    pandas \
-    pyodbc
-
-# Copia o script Python
-COPY run_sql_csv.py /app/
-
-# Cria diretório para os resultados e define permissões
-RUN mkdir -p /app/results && \
-    chown -R appuser:appuser /app
-
-# Muda para o usuário não-root
 USER appuser
 
-# Define variáveis de ambiente para usar o venv
-ENV PATH="/app/venv/bin:$PATH"
-ENV VIRTUAL_ENV="/app/venv"
+# Configurações de ambiente otimizadas
+ENV PATH="/app/venv/bin:/opt/mssql-tools18/bin:$PATH" \
+    VIRTUAL_ENV="/app/venv" \
+    OPENSSL_CONF="/etc/ssl/openssl.cnf"

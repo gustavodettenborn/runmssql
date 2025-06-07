@@ -1,24 +1,22 @@
 #!/bin/bash
+set -e
 
-if ! [[ "20.04 22.04 24.04 24.10" == *"$(grep VERSION_ID /etc/os-release | cut -d '"' -f 2)"* ]];
-then
-    echo "Ubuntu $(grep VERSION_ID /etc/os-release | cut -d '"' -f 2) is not currently supported.";
-    exit;
+# Verificação de versão otimizada
+version=$(grep VERSION_ID /etc/os-release | cut -d '"' -f 2)
+if ! [[ "20.04 22.04 24.04 24.10" == *"$version"* ]]; then
+    echo "Ubuntu $version is not currently supported."
+    exit 1
 fi
 
-# Download the package to configure the Microsoft repo
-curl -sSL -O https://packages.microsoft.com/config/ubuntu/$(grep VERSION_ID /etc/os-release | cut -d '"' -f 2)/packages-microsoft-prod.deb
-# Install the package
-dpkg -i packages-microsoft-prod.deb
-# Delete the file
-rm packages-microsoft-prod.deb
-
-# Install the driver
-apt-get update
-ACCEPT_EULA=Y apt-get install -y msodbcsql18
-# optional: for bcp and sqlcmd
-ACCEPT_EULA=Y apt-get install -y mssql-tools18
-echo 'export PATH="$PATH:/opt/mssql-tools18/bin"' >> ~/.bashrc
-source ~/.bashrc
-# optional: for unixODBC development headers
-apt-get install -y unixodbc-dev
+# Instalar Microsoft repo e drivers em uma única operação
+curl -sSL -O https://packages.microsoft.com/config/ubuntu/$version/packages-microsoft-prod.deb && \
+dpkg -i packages-microsoft-prod.deb && \
+rm packages-microsoft-prod.deb && \
+apt-get update && \
+ACCEPT_EULA=Y apt-get install -y --no-install-recommends \
+    msodbcsql18 \
+    mssql-tools18 \
+    unixodbc-dev && \
+apt-get autoremove -y && \
+apt-get clean && \
+rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/*
