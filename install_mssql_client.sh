@@ -104,7 +104,7 @@ text size = 2147483647
 encryption = off
 
 [MSSQL]
-host = 172.20.2.98
+host = ${MSSQL_SERVER:-ipdatabase}
 port = 1433
 tds version = 7.4
 encryption = off

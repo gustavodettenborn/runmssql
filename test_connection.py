@@ -84,10 +84,12 @@ def test_connection_strings():
     """Test different connection string formats"""
     print("\n=== Testing Connection Strings ===")
 
-    # Test data
-    server = "172.20.2.98"
-    port = "1433"
-    database = "master"  # Use master database for testing
+    # Test data from environment variables or defaults
+    server = os.getenv('MSSQL_SERVER', 'ipdatabase')
+    port = os.getenv('MSSQL_PORT', '1433')
+    database = os.getenv('MSSQL_DATABASE', 'master')
+
+    print(f"Testing with server: {server}:{port}, database: {database}")
 
     connection_strings = [
         # FreeTDS with TDS 7.0 (most compatible)
@@ -224,7 +226,8 @@ def test_freetds_config():
         try:
             with open(config_file, 'r') as f:
                 content = f.read()
-                if 'MSSQL' in content and '172.20.2.98' in content:
+                server_ip = os.getenv('MSSQL_SERVER', 'ipdatabase')
+                if 'MSSQL' in content and server_ip in content:
                     print("✓ FreeTDS configuration contains "
                           "our server settings")
                 else:
@@ -240,7 +243,7 @@ def test_tcp_connectivity():
     """Testa conectividade TCP básica com o servidor SQL"""
     print("\n=== Testing TCP Connectivity ===")
 
-    server = os.getenv('MSSQL_SERVER', '172.20.2.98')
+    server = os.getenv('MSSQL_SERVER', 'ipdatabase')
     parts = server.split(',')
     host = parts[0]
     port = int(parts[1]) if len(parts) > 1 else 1433

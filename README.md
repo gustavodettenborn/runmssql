@@ -1,34 +1,48 @@
 # MSSQL Client Application
 
-A Docker-based MSSQL client application designed to connect to legacy SQL Server instances, execute SQL queries, and export results to CSV files. This application handles SSL/TLS compatibility issues with older SQL Server versions and provides multiple connection options.
+A robust Docker-based MSSQL client application designed to connect to legacy SQL Server instances with **dual-driver support** and **comprehensive environment variable configuration**. Features automatic fallback strategies and legacy SSL/TLS compatibility.
 
-## Features
+## ✨ Features
 
-- **Multiple Connection Methods**: Supports PyODBC (ODBC Driver 17/18) and PyMSSQL (FreeTDS)
-- **Legacy SQL Server Support**: Configured for compatibility with older SQL Server versions
-- **SSL/TLS Compatibility**: Handles legacy encryption requirements
-- **CSV Export**: Execute queries and export results directly to CSV files
-- **Docker Support**: Containerized deployment for consistent environments
-- **Fallback Options**: Automatic fallback between different connection methods
+- **🔄 Dual-Driver Architecture**: PyODBC (primary) + PyMSSQL (fallback) with automatic switching
+- **⚙️ Environment Variable Configuration**: Fully configurable via `.env` file - no hardcoded values
+- **🔒 Legacy SQL Server Support**: Optimized for older SQL Server versions (2000, 2005, 2008+)
+- **🛡️ SSL/TLS Compatibility**: Comprehensive legacy encryption and certificate handling
+- **📊 CSV Export**: Execute SQL queries and export results to CSV files
+- **🐳 Docker-Ready**: Complete containerization with Docker Compose orchestration
+- **🔄 Runtime Configuration**: Dynamic configuration updates based on environment variables
+- **📝 Comprehensive Logging**: Detailed connection diagnostics and error handling
 
-## Target Environment
+## 🎯 Target Environment
 
-- **SQL Server**: 172.20.2.98:1433 (legacy instance)
-- **SSL/TLS**: Legacy compatibility with reduced security levels
-- **Authentication**: SQL Server authentication
+- **SQL Server**: Fully configurable via environment variables (supports legacy instances)
+- **Protocols**: TDS 7.0/7.2/7.4 with automatic version detection
+- **Authentication**: SQL Server authentication with optional Windows authentication
+- **SSL/TLS**: Legacy compatibility with SECLEVEL=0 for maximum compatibility
 
-## Quick Start
+## 🚀 Quick Start
+
+### Prerequisites
+- Docker and Docker Compose installed
+- `.env` file configured (see Configuration section)
 
 ### Docker Method (Recommended)
 
 ```bash
-# Build and run
-docker-compose up --build -d
+# Clone/navigate to project directory
+cd /path/to/runmssql
 
-# Execute application
-docker-compose exec mssql-client python3 run_sql_csv.py
+# Configure environment (edit .env file)
+nano .env
+
+# Build and start
+docker-compose up --build
 
 # Test connection
+docker-compose exec mssql-client python3 test_connection.py
+
+# Run your SQL queries
+docker-compose exec mssql-client python3 run_sql_csv.py
 docker-compose exec mssql-client python3 test_connection.py
 
 # Clean up
@@ -96,7 +110,7 @@ If Docker is not available or having issues, use the manual installation script:
 Set the following environment variables for database connection:
 
 ```bash
-export SQL_SERVER_HOST=172.20.2.98
+export MSSQL_SERVER=ipdatabase
 export SQL_SERVER_PORT=1433
 export SQL_SERVER_USER=your_username
 export SQL_SERVER_PASSWORD=your_password
@@ -164,7 +178,7 @@ This will check:
 
 4. **Connection Timeout:**
    - Legacy SQL Servers may require longer timeouts
-   - Verify network connectivity: `telnet 172.20.2.98 1433`
+   - Verify network connectivity: `telnet $MSSQL_SERVER 1433`
    - Check firewall settings
 
 ## File Structure

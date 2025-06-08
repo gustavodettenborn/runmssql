@@ -241,6 +241,8 @@ class SQLToCsv:
                 for value in row:
                     if value is None:
                         string_row.append('')
+                    elif type(value) is bool:
+                        string_row.append(1 if value else 0)
                     else:
                         str_value = str(value)
                         # Remove .0 de números inteiros que viraram float
