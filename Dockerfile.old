@@ -1,0 +1,186 @@
+FROM ubuntu:22.04
+
+# Configurações para build otimizado
+ENV DEBIAN_FRONTEND=noninteractive \
+    PIP_NO_CACHE_DIR=1 \
+    PIP_DISABLE_PIP_VERSION_CHECK=1
+
+# Instala dependências base e MSSQL em camadas combinadas
+RUN apt-get update && apt-get install -y \
+    curl \
+    gnupg2 \
+    python3 \
+    python3-pip \
+    python3-venv \
+    wget \
+    build-essential \
+    --no-install-recommends \
+    && apt-get clean \
+    && rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/*
+
+# Instala MSSQL drivers
+COPY mssql.sh /tmp/mssql.sh
+RUN chmod +x /tmp/mssql.sh && \
+    /tmp/mssql.sh && \
+    rm -f /tmp/mssql.sh
+
+# Configura diretórios e ambiente Python (apenas root user)
+RUN mkdir -p /app/results && \
+    python3 -m venv /app/venv && \
+    /app/venv/bin/pip install --upgrade pip && \
+    /app/venv/bin/pip install pandas pyodbc && \
+    echo 'export PATH="$PATH:/opt/mssql-tools18/bin"' >> /etc/bash.bashrc
+
+# SOLUÇÃO DEFINITIVA: Instala OpenSSL 1.1.1 para compatibilidade TLS legacy
+RUN echo "=== Installing OpenSSL 1.1.1 for legacy TLS compatibility ===" && \
+    cd /tmp && \
+    # Download OpenSSL 1.1.1 packages from Ubuntu 20.04 repos
+    wget -q http://archive.ubuntu.com/ubuntu/pool/main/o/openssl/libssl1.1_1.1.1f-1ubuntu2.20_amd64.deb || \
+    wget -q http://security.ubuntu.com/ubuntu/pool/main/o/openssl/libssl1.1_1.1.1f-1ubuntu2.22_amd64.deb && \
+    wget -q http://archive.ubuntu.com/ubuntu/pool/main/o/openssl/libcrypto1.1_1.1.1f-1ubuntu2.20_amd64.deb || \
+    wget -q http://security.ubuntu.com/ubuntu/pool/main/o/openssl/libcrypto1.1_1.1.1f-1ubuntu2.22_amd64.deb && \
+    # Install packages (ignore dependency issues with --force-depends)
+    dpkg --force-depends -i *.deb || true && \
+    rm -f *.deb && \
+    # Configure library paths
+    echo "/usr/lib/x86_64-linux-gnu" > /etc/ld.so.conf.d/openssl11.conf && \
+    ldconfig && \
+    # Verify installation
+    echo "OpenSSL libraries installed:" && \
+    ls -la /usr/lib/x86_64-linux-gnu/libssl.so* 2>/dev/null || echo "libssl not found" && \
+    ls -la /usr/lib/x86_64-linux-gnu/libcrypto.so* 2>/dev/null || echo "libcrypto not found"
+
+# Cria configuração OpenSSL legacy mais robusta e simplificada
+RUN cat > /etc/ssl/openssl_legacy.cnf << 'EOF'
+# OpenSSL Legacy Configuration for MSSQL Compatibility
+openssl_conf = openssl_init
+
+[openssl_init]
+providers = provider_sect
+ssl_conf = ssl_sect
+
+[provider_sect]
+default = default_sect
+legacy = legacy_sect
+
+[default_sect]
+activate = 1
+
+[legacy_sect]
+activate = 1
+
+[ssl_sect]
+system_default = system_default_sect
+
+[system_default_sect]
+MinProtocol = None
+MaxProtocol = None
+Options = UnsafeLegacyRenegotiation,UnsafeLegacyServerConnect
+CipherString = ALL:@SECLEVEL=0
+Ciphersuites =
+EOF
+
+# Configurar ODBC de forma robusta com múltiplas estratégias
+RUN echo "=== Configurando ODBC ===" && \
+    rm -f /etc/odbcinst.ini /etc/odbc.ini && \
+    mkdir -p /etc /usr/local/etc && \
+    odbcinst -i -d -f /opt/microsoft/msodbcsql18/etc/odbcinst.ini || true && \
+    echo "[ODBC Driver 18 for SQL Server]" > /etc/odbcinst.ini && \
+    echo "Description=Microsoft ODBC Driver 18 for SQL Server" >> /etc/odbcinst.ini && \
+    echo "Driver=/opt/microsoft/msodbcsql18/lib64/libmsodbcsql-18.5.so.1.1" >> /etc/odbcinst.ini && \
+    echo "Threading=1" >> /etc/odbcinst.ini && \
+    echo "FileUsage=1" >> /etc/odbcinst.ini && \
+    echo "UsageCount=1" >> /etc/odbcinst.ini && \
+    echo "" >> /etc/odbcinst.ini && \
+    echo "[ODBC Driver 17 for SQL Server]" >> /etc/odbcinst.ini && \
+    echo "Description=Microsoft ODBC Driver 17 for SQL Server" >> /etc/odbcinst.ini && \
+    echo "Driver=/opt/microsoft/msodbcsql18/lib64/libmsodbcsql-18.5.so.1.1" >> /etc/odbcinst.ini && \
+    echo "Threading=1" >> /etc/odbcinst.ini && \
+    echo "FileUsage=1" >> /etc/odbcinst.ini && \
+    echo "UsageCount=1" >> /etc/odbcinst.ini && \
+    echo "" >> /etc/odbcinst.ini && \
+    echo "[SQL Server]" >> /etc/odbcinst.ini && \
+    echo "Description=Microsoft ODBC Driver for SQL Server" >> /etc/odbcinst.ini && \
+    echo "Driver=/opt/microsoft/msodbcsql18/lib64/libmsodbcsql-18.5.so.1.1" >> /etc/odbcinst.ini && \
+    echo "Threading=1" >> /etc/odbcinst.ini && \
+    echo "FileUsage=1" >> /etc/odbcinst.ini && \
+    echo "UsageCount=1" >> /etc/odbcinst.ini && \
+    echo "[ODBC Data Sources]" > /etc/odbc.ini && \
+    echo "ODBC Driver 18 for SQL Server=ODBC Driver 18 for SQL Server" >> /etc/odbc.ini && \
+    echo "ODBC Driver 17 for SQL Server=ODBC Driver 17 for SQL Server" >> /etc/odbc.ini && \
+    echo "SQL Server=SQL Server" >> /etc/odbc.ini && \
+    cp /etc/odbcinst.ini /usr/local/etc/odbcinst.ini && \
+    cp /etc/odbc.ini /usr/local/etc/odbc.ini && \
+    chmod 644 /etc/odbcinst.ini /etc/odbc.ini /usr/local/etc/odbcinst.ini /usr/local/etc/odbc.ini && \
+    echo "/opt/microsoft/msodbcsql18/lib64" > /etc/ld.so.conf.d/mssql.conf && \
+    ldconfig && \
+    ls -la /opt/microsoft/msodbcsql18/lib64/ && \
+    cat /etc/odbcinst.ini
+
+# Copia o script Python para o container
+COPY run_sql_csv.py /app/run_sql_csv.py
+
+WORKDIR /app
+
+# Configurações de ambiente otimizadas para TLS legacy e ODBC com OpenSSL 1.1.1
+ENV PATH="/app/venv/bin:/opt/mssql-tools18/bin:$PATH" \
+    VIRTUAL_ENV="/app/venv" \
+    OPENSSL_CONF="/etc/ssl/openssl_legacy.cnf" \
+    ODBCSYSINI="/etc" \
+    ODBCINSTINI="/etc/odbcinst.ini" \
+    ODBCINI="/etc/odbc.ini" \
+    SSL_CERT_DIR="/etc/ssl/certs" \
+    OPENSSL_ENABLE_SHA1_SIGNATURES="1" \
+    LD_LIBRARY_PATH="/usr/lib/x86_64-linux-gnu:/opt/microsoft/msodbcsql18/lib64:$LD_LIBRARY_PATH" \
+    ODBCPATH="/opt/microsoft/msodbcsql18/lib64:/usr/lib/x86_64-linux-gnu" \
+    SSL_VERSION="all" \
+    OPENSSL_ALLOW_PROXY_CERTS="1" \
+    OPENSSL_TLS_SECURITY_LEVEL="0"
+
+# Configure environment variables for OpenSSL legacy support and ODBC
+ENV OPENSSL_CONF="/etc/ssl/openssl_legacy.cnf"
+ENV LD_LIBRARY_PATH="/usr/lib/x86_64-linux-gnu:/opt/microsoft/msodbcsql18/lib64:$LD_LIBRARY_PATH"
+ENV ODBCSYSINI="/etc"
+ENV ODBCINI="/etc/odbc.ini"
+ENV PATH="/opt/mssql-tools18/bin:$PATH"
+
+# Configure SSL/TLS environment for maximum compatibility
+ENV SSL_CERT_DIR="/etc/ssl/certs"
+ENV SSL_CERT_FILE="/etc/ssl/certs/ca-certificates.crt"
+ENV OPENSSL_ENGINES="/usr/lib/x86_64-linux-gnu/engines-3"
+
+# Force legacy TLS protocols (disable strict SSL validation)
+ENV PYTHONHTTPSVERIFY="0"
+ENV CURL_CA_BUNDLE=""
+ENV REQUESTS_CA_BUNDLE=""
+
+# Set working directory and default command
+WORKDIR /app
+CMD ["/bin/bash"]
+
+# Teste final para verificar se tudo está funcionando
+RUN echo "=== Final verification ===" && \
+    echo "1. Checking OpenSSL versions available:" && \
+    ls -la /usr/lib/x86_64-linux-gnu/libssl.so* && \
+    ls -la /usr/lib/x86_64-linux-gnu/libcrypto.so* && \
+    echo "2. Checking ODBC driver files:" && \
+    ls -la /opt/microsoft/msodbcsql18/lib64/ && \
+    echo "3. ODBC driver library test with OpenSSL 1.1.1:" && \
+    LD_LIBRARY_PATH="/usr/lib/x86_64-linux-gnu:$LD_LIBRARY_PATH" ldd /opt/microsoft/msodbcsql18/lib64/libmsodbcsql-18.5.so.1.1 | head -10 && \
+    echo "4. ODBC configuration files:" && \
+    cat /etc/odbcinst.ini && \
+    echo "5. Environment variables:" && \
+    env | grep -E "(OPENSSL|SSL|TLS|ODB)" && \
+    echo "6. Library configuration:" && \
+    ldconfig -p | grep -E "(ssl|crypto|odbc)" || echo "No SSL libraries in cache" && \
+    echo "7. Testing OpenSSL 1.1.1 availability:" && \
+    LD_LIBRARY_PATH="/usr/lib/x86_64-linux-gnu:$LD_LIBRARY_PATH" python3 -c "import ctypes; ssl11 = ctypes.CDLL('/usr/lib/x86_64-linux-gnu/libssl.so.1.1'); print('OpenSSL 1.1.1 loaded')" && \
+    echo "8. Testing ODBC driver with OpenSSL 1.1.1:" && \
+    LD_LIBRARY_PATH="/usr/lib/x86_64-linux-gnu:$LD_LIBRARY_PATH" python3 -c "import ctypes; lib = ctypes.CDLL('/opt/microsoft/msodbcsql18/lib64/libmsodbcsql-18.5.so.1.1'); print('ODBC driver loaded with OpenSSL 1.1.1')" && \
+    echo "9. Testing PyODBC with OpenSSL 1.1.1:" && \
+    LD_LIBRARY_PATH="/usr/lib/x86_64-linux-gnu:$LD_LIBRARY_PATH" python3 -c "import pyodbc; print('PyODBC version:', pyodbc.version)" && \
+    echo "10. Testing PyODBC drivers detection:" && \
+    LD_LIBRARY_PATH="/usr/lib/x86_64-linux-gnu:$LD_LIBRARY_PATH" python3 -c "import pyodbc; drivers = pyodbc.drivers(); print('Available drivers:', drivers); print('Driver count:', len(drivers))" && \
+    echo "11. Comprehensive SSL/TLS test:" && \
+    OPENSSL_CONF="/etc/ssl/openssl_legacy.cnf" LD_LIBRARY_PATH="/usr/lib/x86_64-linux-gnu:$LD_LIBRARY_PATH" python3 -c "import ssl; print('SSL module loaded'); print('OpenSSL version:', ssl.OPENSSL_VERSION)" && \
+    echo "All tests completed"

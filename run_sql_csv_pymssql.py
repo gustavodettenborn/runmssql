@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-run_sql_csv.py - Versão atualizada com fallback PyMSSQL
+run_sql_csv_pymssql.py - Versão alternativa usando pymssql
 """
 
 import os
@@ -49,9 +49,6 @@ class SQLToCsv:
         self.connection = None
         self.connection_type = None  # 'pyodbc' ou 'pymssql'
 
-        print("==================================================")
-        print("MSSQL to CSV Converter")
-        print("==================================================")
         print("Configuração carregada:")
         print(f"  Servidor: {self.server}")
         print(f"  Database: {self.database}")
@@ -59,7 +56,7 @@ class SQLToCsv:
         if not self.trusted_connection:
             print(f"  Username: {self.username}")
 
-        print(f"\nDrivers disponíveis:")
+        print("\nDrivers disponíveis:")
         print(f"  PyODBC: {'✓' if PYODBC_AVAILABLE else '✗'}")
         print(f"  PyMSSQL: {'✓' if PYMSSQL_AVAILABLE else '✗'}")
 
@@ -73,12 +70,15 @@ class SQLToCsv:
             print("Verifique as variáveis MSSQL_USERNAME e MSSQL_PASSWORD")
             return False
 
-        # Tentar PyODBC primeiro, depois PyMSSQL
-        if self._try_pyodbc_connection():
-            return True
+        # Estratégia 1: Tentar PyODBC se disponível
+        if PYODBC_AVAILABLE:
+            if self._try_pyodbc_connection():
+                return True
 
-        if self._try_pymssql_connection():
-            return True
+        # Estratégia 2: Tentar PyMSSQL se disponível
+        if PYMSSQL_AVAILABLE:
+            if self._try_pymssql_connection():
+                return True
 
         print("❌ FALHA: Não foi possível conectar com nenhum driver")
         return False
@@ -186,35 +186,9 @@ class SQLToCsv:
                    f"UID={self.username};"
                    f"PWD={self.password};"
                    f"Encrypt=no;"
-                   f"TrustServerCertificate=yes;")
-
-    def test_tcp_connectivity(self):
-        """Testa conectividade TCP básica"""
-        print(f"\n--- Teste de Conectividade TCP ---")
-        try:
-            # Extrai host e porta
-            parts = self.server.split(',')
-            host = parts[0]
-            port = int(parts[1]) if len(parts) > 1 else 1433
-
-            print(f"Testando TCP {host}:{port}...")
-
-            # Teste de socket TCP
-            sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-            sock.settimeout(10)
-            result = sock.connect_ex((host, port))
-            sock.close()
-
-            if result == 0:
-                print("✅ Conectividade TCP OK")
-                return True
-            else:
-                print(f"❌ TCP Falhou (código: {result})")
-                return False
-
-        except Exception as e:
-            print(f"❌ Erro no teste TCP: {e}")
-            return False
+                   f"TrustServerCertificate=yes;"
+                   f"ConnectionTimeout=30;"
+                   f"LoginTimeout=30;")
 
     def execute_sql_to_csv(self, sql_query, csv_filename, chunk_size=10000):
         """Executa query SQL e salva resultado em CSV"""
@@ -223,8 +197,8 @@ class SQLToCsv:
             return False
 
         try:
-            # print("\nExecutando query...")
-            # print(f"Query: {sql_query[:100]}...")
+            print(f"\nExecutando query via {self.connection_type}...")
+            print(f"Query: {sql_query[:100]}...")
 
             # Executa a query
             cursor = self.connection.cursor()
@@ -283,28 +257,35 @@ class SQLToCsv:
             print(f"✗ Erro ao ler arquivo SQL: {e}")
             return False
 
-    def batch_process(self, scripts_config):
-        """Processa múltiplos scripts SQL"""
-        results = []
+    def test_network_connectivity(self):
+        """Testa conectividade de rede com o servidor"""
+        print("\n--- Teste de Conectividade de Rede ---")
 
-        for config in scripts_config:
-            sql_file = config.get('sql_file')
-            csv_output = config.get('csv_output')
+        # Extrai o servidor e porta
+        server_parts = self.server.split(',')
+        server_host = server_parts[0]
+        server_port = int(server_parts[1]) if len(server_parts) > 1 else 1433
 
-            if not sql_file or not csv_output:
-                print(f"✗ Configuração inválida: {config}")
-                continue
+        print(f"Testando conectividade para {server_host}:{server_port}")
 
-            print(f"\n--- Processando {sql_file} ---")
-            success = self.execute_sql_file_to_csv(sql_file, csv_output)
+        try:
+            sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            sock.settimeout(5)
+            result = sock.connect_ex((server_host, server_port))
+            sock.close()
 
-            results.append({
-                'sql_file': sql_file,
-                'csv_output': csv_output,
-                'success': success
-            })
+            if result == 0:
+                print(f"✓ Conectividade TCP OK para "
+                      f"{server_host}:{server_port}")
+                return True
+            else:
+                print(f"✗ Não foi possível conectar TCP para "
+                      f"{server_host}:{server_port}")
+                return False
 
-        return results
+        except Exception as e:
+            print(f"✗ Erro no teste de conectividade: {e}")
+            return False
 
     def test_connection(self):
         """Testa a conexão executando uma query simples"""
@@ -326,11 +307,20 @@ class SQLToCsv:
         """Fecha a conexão com o banco"""
         if self.connection:
             self.connection.close()
-            print("✓ Conexão fechada")
+            print(f"✓ Conexão {self.connection_type} fechada")
 
 
 def main():
-    """Função principal"""
+    print("=" * 50)
+    print("MSSQL to CSV Converter (PyMSSQL Version)")
+    print("=" * 50)
+
+    # Verifica se pelo menos um driver está disponível
+    if not PYODBC_AVAILABLE and not PYMSSQL_AVAILABLE:
+        print("❌ ERRO: Nenhum driver SQL Server disponível!")
+        print("Instale pyodbc ou pymssql para continuar.")
+        return
+
     # Inicializa a conexão
     db = SQLToCsv()
 
@@ -339,17 +329,18 @@ def main():
         print("Falha na conexão. Executando diagnósticos...")
 
         # Testa conectividade de rede
-        if db.test_tcp_connectivity():
+        if db.test_network_connectivity():
             print("\n✓ Conectividade de rede OK")
-            print("- Problema pode ser nas credenciais ou configuração do SQL Server")
+            print("- Problema pode ser nas credenciais ou "
+                  "configuração do SQL Server")
         else:
             print("\n✗ Problema de conectividade de rede detectado")
 
         print("\nDicas de solução:")
         print("1. Verifique se o servidor está correto no .env")
-        print("2. Verifique se o firewall permite conexões na porta 1433")
-        print("3. Verifique se o usuário e senha estão corretos")
-        print("4. Teste se SQL Server Authentication está habilitado")
+        print("2. Verifique credenciais de usuário e senha")
+        print("3. Teste se SQL Server Authentication está habilitado")
+        print("4. Verifique se o firewall permite conexões na porta 1433")
         return
 
     # Testa a conexão
@@ -359,7 +350,7 @@ def main():
         return
 
     try:
-        # Exemplo de query simples para teste
+        # Query de teste
         test_query = """
         SELECT
             'Teste' as tipo,
@@ -368,69 +359,26 @@ def main():
         """
 
         print("\n--- Executando query de teste ---")
-        db.execute_sql_to_csv(test_query, "teste_conexao.csv")
+        db.execute_sql_to_csv(test_query, "teste_conexao_pymssql.csv")
 
-        # Processa scripts SQL em lote do diretório /app/sql_scripts
+        # Processamento em lote
         sql_scripts_dir = "/app/sql_scripts"
-
         if os.path.exists(sql_scripts_dir) and os.path.isdir(sql_scripts_dir):
             print("\n--- Processamento em Lote ---")
-            print(f"Buscando scripts SQL em: {sql_scripts_dir}")
-
-            # Lista todos os arquivos .sql no diretório
-            sql_files = []
-            for file in os.listdir(sql_scripts_dir):
-                if file.lower().endswith('.sql'):
-                    sql_files.append(file)
+            sql_files = [f for f in os.listdir(sql_scripts_dir)
+                        if f.lower().endswith('.sql')]
 
             if sql_files:
-                print(f"✓ Encontrados {len(sql_files)} arquivo(s) SQL:")
-                for file in sorted(sql_files):
-                    print(f"  - {file}")
-
-                # Prepara configuração para batch_process
-                scripts_config = []
+                print(f"✓ Encontrados {len(sql_files)} arquivo(s) SQL")
                 for sql_file in sorted(sql_files):
-                    # Remove extensão .sql e adiciona .csv
-                    csv_filename = sql_file[:-4] + ".csv"
-                    scripts_config.append({
-                        'sql_file': os.path.join(sql_scripts_dir, sql_file),
-                        'csv_output': csv_filename
-                    })
-
-                # Executa processamento em lote
-                print("\n--- Iniciando Processamento em Lote ---")
-                results = db.batch_process(scripts_config)
-
-                # Relatório final
-                print("\n--- Relatório Final ---")
-                total_scripts = len(results)
-                successful_scripts = sum(1 for r in results if r['success'])
-                failed_scripts = total_scripts - successful_scripts
-
-                print(f"Total de scripts processados: {total_scripts}")
-                print(f"✓ Sucessos: {successful_scripts}")
-                print(f"✗ Falhas: {failed_scripts}")
-
-                if failed_scripts > 0:
-                    print("\nScripts que falharam:")
-                    for result in results:
-                        if not result['success']:
-                            print(f"  ✗ {os.path.basename(result['sql_file'])}")
-
-                if successful_scripts > 0:
-                    print("\nCSVs gerados com sucesso:")
-                    for result in results:
-                        if result['success']:
-                            print(f"  ✓ {result['csv_output']}")
+                    csv_filename = sql_file[:-4] + "_pymssql.csv"
+                    sql_path = os.path.join(sql_scripts_dir, sql_file)
+                    print(f"\n--- Processando {sql_file} ---")
+                    db.execute_sql_file_to_csv(sql_path, csv_filename)
             else:
-                print("✗ Nenhum arquivo .sql encontrado no diretório")
+                print("✗ Nenhum arquivo .sql encontrado")
         else:
             print(f"\n⚠️  Diretório {sql_scripts_dir} não encontrado")
-            print("Para usar o processamento em lote:")
-            print("1. Crie o diretório sql_scripts na raiz do projeto")
-            print("2. Adicione seus arquivos .sql neste diretório")
-            print("3. Execute novamente o container")
 
     except Exception as e:
         print(f"✗ Erro durante execução: {e}")

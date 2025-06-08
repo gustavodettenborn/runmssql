@@ -1,8 +1,3 @@
-#!/usr/bin/env python3
-"""
-run_sql_csv.py - Versão atualizada com fallback PyMSSQL
-"""
-
 import os
 import socket
 import warnings
@@ -62,6 +57,25 @@ class SQLToCsv:
         print(f"\nDrivers disponíveis:")
         print(f"  PyODBC: {'✓' if PYODBC_AVAILABLE else '✗'}")
         print(f"  PyMSSQL: {'✓' if PYMSSQL_AVAILABLE else '✗'}")
+
+    def list_available_drivers(self):
+        """Lista drivers ODBC disponíveis"""
+        print("\n--- Drivers ODBC Disponíveis ---")
+        try:
+            drivers = pyodbc.drivers()
+            sql_server_drivers = [d for d in drivers if 'SQL Server' in d]
+
+            if sql_server_drivers:
+                for driver in sql_server_drivers:
+                    print(f"✓ {driver}")
+            else:
+                print("✗ Nenhum driver SQL Server encontrado")
+                print("Drivers disponíveis:", drivers)
+
+            return sql_server_drivers
+        except Exception as e:
+            print(f"✗ Erro ao listar drivers: {e}")
+            return []
 
     def connect(self):
         """Estabelece conexão com o banco usando múltiplas estratégias"""
@@ -187,34 +201,166 @@ class SQLToCsv:
                    f"PWD={self.password};"
                    f"Encrypt=no;"
                    f"TrustServerCertificate=yes;")
+            if strategy['driver'] not in pyodbc.drivers():
+                print(f"⚠️  Driver {strategy['driver']} não disponível")
+                continue
 
-    def test_tcp_connectivity(self):
-        """Testa conectividade TCP básica"""
-        print(f"\n--- Teste de Conectividade TCP ---")
-        try:
-            # Extrai host e porta
-            parts = self.server.split(',')
-            host = parts[0]
-            port = int(parts[1]) if len(parts) > 1 else 1433
+            try:
+                # Monta string de conexão
+                conn_str = self._build_connection_string(strategy)
 
-            print(f"Testando TCP {host}:{port}...")
+                # Log da tentativa (sem senha)
+                safe_conn = conn_str.replace(f"PWD={self.password}", "PWD=***")
+                print(f"    String de conexão: {safe_conn}")
 
-            # Teste de socket TCP
-            sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-            sock.settimeout(10)
-            result = sock.connect_ex((host, port))
-            sock.close()
+                # Tenta a conexão
+                self.connection = pyodbc.connect(conn_str,
+                                                 timeout=strategy['timeout'])
+                print(f"✅ SUCESSO! Conectado com {strategy['name']}")
 
-            if result == 0:
-                print("✅ Conectividade TCP OK")
+                # Teste rápido da conexão
+                cursor = self.connection.cursor()
+                cursor.execute("SELECT @@VERSION")
+                version = cursor.fetchone()[0]
+                cursor.close()
+                print(f"    Versão do SQL Server: {version[:50]}...")
+
                 return True
-            else:
-                print(f"❌ TCP Falhou (código: {result})")
-                return False
 
-        except Exception as e:
-            print(f"❌ Erro no teste TCP: {e}")
-            return False
+            except pyodbc.Error as e:
+                error_code = str(e)
+                print(f"    ❌ Falhou: {error_code[:100]}...")
+
+                # Diagnóstico específico
+                self._diagnose_error(e)
+
+            except Exception as e:
+                print(f"    ❌ Erro inesperado: {e}")
+
+        print("❌ FALHA: Não foi possível conectar com nenhuma estratégia")
+        return False
+
+    def _get_connection_strategies(self):
+        """Define estratégias de conexão em ordem de prioridade"""
+        return [
+            # Estratégia 1: FreeTDS com TDS 7.0 (mais compatível)
+            {
+                'name': 'FreeTDS Legacy (TDS 7.0)',
+                'driver': 'FreeTDS',
+                'tds_version': '7.0',
+                'encrypt': 'no',
+                'trust_cert': 'yes',
+                'timeout': 30
+            },
+            # Estratégia 2: FreeTDS com TDS 7.2
+            {
+                'name': 'FreeTDS Standard (TDS 7.2)',
+                'driver': 'FreeTDS',
+                'tds_version': '7.2',
+                'encrypt': 'no',
+                'trust_cert': 'yes',
+                'timeout': 30
+            },
+            # Estratégia 3: ODBC 17 sem SSL
+            {
+                'name': 'ODBC 17 Sem SSL',
+                'driver': 'ODBC Driver 17 for SQL Server',
+                'encrypt': 'no',
+                'trust_cert': 'yes',
+                'timeout': 30
+            },
+            # Estratégia 4: ODBC 18 sem SSL
+            {
+                'name': 'ODBC 18 Sem SSL',
+                'driver': 'ODBC Driver 18 for SQL Server',
+                'encrypt': 'no',
+                'trust_cert': 'yes',
+                'timeout': 30
+            },
+            # Estratégia 5: ODBC 17 com SSL opcional
+            {
+                'name': 'ODBC 17 SSL Opcional',
+                'driver': 'ODBC Driver 17 for SQL Server',
+                'encrypt': 'optional',
+                'trust_cert': 'yes',
+                'timeout': 30
+            },
+            # Estratégia 6: ODBC 18 com SSL opcional
+            {
+                'name': 'ODBC 18 SSL Opcional',
+                'driver': 'ODBC Driver 18 for SQL Server',
+                'encrypt': 'optional',
+                'trust_cert': 'yes',
+                'timeout': 30
+            },
+        ]
+
+    def _build_connection_string(self, strategy):
+        """Constrói string de conexão baseada na estratégia"""
+        driver = strategy['driver']
+
+        if 'FreeTDS' in driver:
+            # FreeTDS - usar configuração específica
+            conn_str = (f"DRIVER={{{driver}}};"
+                        f"SERVER={self.server};"
+                        f"DATABASE={self.database};"
+                        f"UID={self.username};"
+                        f"PWD={self.password};"
+                        f"TDS_Version={strategy['tds_version']};"
+                        f"Port=1433;"
+                        f"Encrypt={strategy['encrypt']};"
+                        f"TrustServerCertificate={strategy['trust_cert']};")
+        else:
+            # Microsoft ODBC Drivers
+            conn_str = (f"DRIVER={{{driver}}};"
+                        f"SERVER={self.server};"
+                        f"DATABASE={self.database};"
+                        f"UID={self.username};"
+                        f"PWD={self.password};"
+                        f"Encrypt={strategy['encrypt']};"
+                        f"TrustServerCertificate={strategy['trust_cert']};"
+                        f"ConnectionTimeout={strategy['timeout']};"
+                        f"LoginTimeout={strategy['timeout']};")
+
+        return conn_str
+
+    def _diagnose_error(self, error):
+        """Fornece diagnóstico específico para tipos de erro"""
+        error_str = str(error).upper()
+
+        if "28000" in error_str or "18456" in error_str:
+            print("    🔍 ERRO DE AUTENTICAÇÃO:")
+            print(f"       - Usuário: {self.username}")
+            print("       - Verificações necessárias:")
+            print("         1. Usuário existe no SQL Server?")
+            print("         2. Senha está correta?")
+            print("         3. SQL Server Authentication habilitado?")
+            print("         4. Usuário tem permissão no database?")
+
+        elif "08001" in error_str:
+            print("    🔍 ERRO DE CONECTIVIDADE:")
+            print("       - Servidor não acessível ou porta bloqueada")
+            print("       - Verifique firewall e configuração de rede")
+
+        elif "SSL" in error_str or "TLS" in error_str:
+            print("    🔍 ERRO DE SSL/TLS:")
+            print("       - Incompatibilidade de protocolo SSL/TLS")
+            print("       - SQL Server pode estar usando protocolo legacy")
+
+        elif "HANDSHAKE" in error_str:
+            print("    🔍 ERRO DE HANDSHAKE SSL:")
+            print("       - Problema na negociação SSL/TLS")
+            print("       - Tentando estratégias sem SSL...")
+
+        elif "CERTIFICATE" in error_str:
+            print("    🔍 ERRO DE CERTIFICADO:")
+            print("       - Problema com certificado do servidor")
+            print("       - Usando TrustServerCertificate=yes")
+
+        elif "TDS" in error_str:
+            print("    🔍 ERRO DE PROTOCOLO TDS:")
+            print("       - Incompatibilidade de versão TDS")
+            print("       - Tentando versões mais antigas...")
 
     def execute_sql_to_csv(self, sql_query, csv_filename, chunk_size=10000):
         """Executa query SQL e salva resultado em CSV"""
@@ -223,17 +369,17 @@ class SQLToCsv:
             return False
 
         try:
-            # print("\nExecutando query...")
-            # print(f"Query: {sql_query[:100]}...")
+            print("\nExecutando query...")
+            print(f"Query: {sql_query[:100]}...")
 
-            # Executa a query
+            # Executa a query usando cursor para ter controle total dos tipos
             cursor = self.connection.cursor()
             cursor.execute(sql_query)
 
             # Obtém os nomes das colunas
             columns = [column[0] for column in cursor.description]
 
-            # Coleta todos os dados
+            # Coleta todos os dados como strings
             rows = []
             for row in cursor:
                 # Converte cada valor para string, tratando None/NULL
@@ -262,7 +408,8 @@ class SQLToCsv:
 
             print("✓ Query executada com sucesso!")
             print(f"✓ {len(df)} registros salvos em {output_path}")
-            print("✓ Todos os valores mantidos como string")
+            print("✓ Todos os valores mantidos como string "
+                  "(0/1 não convertidos)")
             return True
 
         except Exception as e:
@@ -284,7 +431,12 @@ class SQLToCsv:
             return False
 
     def batch_process(self, scripts_config):
-        """Processa múltiplos scripts SQL"""
+        """Processa múltiplos scripts SQL
+
+        Args:
+            scripts_config: Lista de dicionários com 'sql_file' e 'csv_output'
+
+        """
         results = []
 
         for config in scripts_config:
@@ -305,6 +457,37 @@ class SQLToCsv:
             })
 
         return results
+
+    def test_network_connectivity(self):
+        """Testa conectividade de rede com o servidor"""
+        print("\n--- Teste de Conectividade de Rede ---")
+
+        # Extrai o servidor e porta
+        server_parts = self.server.split(',')
+        server_host = server_parts[0]
+        server_port = int(server_parts[1]) if len(server_parts) > 1 else 1433
+
+        print(f"Testando conectividade para {server_host}:{server_port}")
+
+        # Teste de conectividade TCP
+        try:
+            sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            sock.settimeout(5)
+            result = sock.connect_ex((server_host, server_port))
+            sock.close()
+
+            if result == 0:
+                print(f"✓ Conectividade TCP OK para "
+                      f"{server_host}:{server_port}")
+                return True
+            else:
+                print(f"✗ Não foi possível conectar TCP para "
+                      f"{server_host}:{server_port}")
+                return False
+
+        except Exception as e:
+            print(f"✗ Erro no teste de conectividade: {e}")
+            return False
 
     def test_connection(self):
         """Testa a conexão executando uma query simples"""
@@ -329,27 +512,38 @@ class SQLToCsv:
             print("✓ Conexão fechada")
 
 
+# Função principal
 def main():
-    """Função principal"""
+    print("=" * 50)
+    print("MSSQL to CSV Converter")
+    print("=" * 50)
+
     # Inicializa a conexão
     db = SQLToCsv()
+
+    # Lista drivers disponíveis
+    db.list_available_drivers()
 
     # Conecta ao banco
     if not db.connect():
         print("Falha na conexão. Executando diagnósticos...")
 
         # Testa conectividade de rede
-        if db.test_tcp_connectivity():
+        if db.test_network_connectivity():
             print("\n✓ Conectividade de rede OK")
-            print("- Problema pode ser nas credenciais ou configuração do SQL Server")
+            print("- Problema pode ser nas credenciais ou "
+                  "configuração do SQL Server")
         else:
             print("\n✗ Problema de conectividade de rede detectado")
 
         print("\nDicas de solução:")
         print("1. Verifique se o servidor está correto no .env")
-        print("2. Verifique se o firewall permite conexões na porta 1433")
-        print("3. Verifique se o usuário e senha estão corretos")
-        print("4. Teste se SQL Server Authentication está habilitado")
+        print("2. Para SQL Azure: use 'servidor.database.windows.net'")
+        print("3. Para instâncias nomeadas: use 'servidor\\instancia'")
+        print("4. Verifique se o firewall permite conexões na porta 1433")
+        print("5. Para containers locais, use 'host.docker.internal'")
+        print("6. Verifique se o usuário 'GESP_ABR' existe e tem permissões")
+        print("7. Teste se SQL Server Authentication está habilitado")
         return
 
     # Testa a conexão
@@ -416,7 +610,8 @@ def main():
                     print("\nScripts que falharam:")
                     for result in results:
                         if not result['success']:
-                            print(f"  ✗ {os.path.basename(result['sql_file'])}")
+                            print(f"  ✗ "
+                                  f"{os.path.basename(result['sql_file'])}")
 
                 if successful_scripts > 0:
                     print("\nCSVs gerados com sucesso:")
@@ -428,7 +623,8 @@ def main():
         else:
             print(f"\n⚠️  Diretório {sql_scripts_dir} não encontrado")
             print("Para usar o processamento em lote:")
-            print("1. Crie o diretório sql_scripts na raiz do projeto")
+            print("1. Crie o diretório sql_scripts na raiz do "
+                  "projeto")
             print("2. Adicione seus arquivos .sql neste diretório")
             print("3. Execute novamente o container")
 
