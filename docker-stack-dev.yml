@@ -1,0 +1,107 @@
+version: '3.8'
+
+# DESENVOLVIMENTO: Esta versão permite editar scripts Python sem rebuild
+# Não use em produção!
+
+services:
+  mssql-client:
+    image: mssql-pyodbc-client:latest
+    environment:
+      # Database Connection
+      - MSSQL_SERVER=${MSSQL_SERVER}
+      - MSSQL_PORT=${MSSQL_PORT}
+      - MSSQL_DATABASE=${MSSQL_DATABASE}
+      - MSSQL_USERNAME=${MSSQL_USERNAME}
+      - MSSQL_PASSWORD=${MSSQL_PASSWORD}
+      - MSSQL_TRUSTED_CONNECTION=${MSSQL_TRUSTED_CONNECTION:-false}
+
+      # Connection Options
+      - MSSQL_ENCRYPT=${MSSQL_ENCRYPT}
+      - MSSQL_TRUST_SERVER_CERTIFICATE=${MSSQL_TRUST_SERVER_CERTIFICATE}
+      - MSSQL_CONNECTION_TIMEOUT=${MSSQL_CONNECTION_TIMEOUT}
+      - MSSQL_COMMAND_TIMEOUT=${MSSQL_COMMAND_TIMEOUT}
+
+      # TDS Configuration
+      - TDS_VERSION=${TDS_VERSION}
+
+      # Driver Configuration
+      - PREFERRED_DRIVER=${PREFERRED_DRIVER}
+      - FALLBACK_ENABLED=${FALLBACK_ENABLED}
+
+      # Debug Configuration
+      - DEBUG_MODE=${DEBUG_MODE}
+      - VERBOSE_LOGGING=${VERBOSE_LOGGING}
+
+      # SSL/TLS Configuration
+      - OPENSSL_LEGACY_MODE=${OPENSSL_LEGACY_MODE}
+      - SSL_VERIFY=${SSL_VERIFY}
+      - SSL_MIN_PROTOCOL=${SSL_MIN_PROTOCOL}
+      - SSL_MAX_PROTOCOL=${SSL_MAX_PROTOCOL}
+
+      # FreeTDS Configuration
+      - FREETDS_CHARSET=${FREETDS_CHARSET}
+      - FREETDS_TEXT_SIZE=${FREETDS_TEXT_SIZE}
+      - FREETDS_ENCRYPTION=${FREETDS_ENCRYPTION}
+      - FREETDS_USE_NTLMV2=${FREETDS_USE_NTLMV2}
+      - FREETDS_ENABLE_KRB5=${FREETDS_ENABLE_KRB5}
+
+    volumes:
+      # Data volumes
+      - mssql-results:/app/results
+      - mssql-scripts:/app/sql_scripts:ro
+
+      # DESENVOLVIMENTO: Mount dos scripts Python para edição em tempo real
+      - type: bind
+        source: ./run_sql_csv.py
+        target: /app/run_sql_csv.py
+      - type: bind
+        source: ./test_connection.py
+        target: /app/test_connection.py
+      - type: bind
+        source: ./test_connection_secure.py
+        target: /app/test_connection_secure.py
+
+    networks:
+      - mssql-network
+
+    deploy:
+      replicas: 1
+      restart_policy:
+        condition: on-failure
+        delay: 5s
+        max_attempts: 3
+        window: 120s
+      placement:
+        constraints:
+          - node.role == manager
+      resources:
+        limits:
+          memory: 512M
+          cpus: '0.5'
+        reservations:
+          memory: 256M
+          cpus: '0.25'
+
+    stdin_open: true
+    tty: true
+    command: /bin/bash
+
+volumes:
+  mssql-results:
+    driver: local
+    driver_opts:
+      type: none
+      device: /home/raysonromulo/Projetos/athenas/athenas-project/src/legacy/data
+      o: bind
+
+  mssql-scripts:
+    driver: local
+    driver_opts:
+      type: none
+      device: /home/raysonromulo/Projetos/athenas/athenas-project/src/legacy/scripts/SQL/mpma
+      o: bind
+
+networks:
+  mssql-network:
+    driver: overlay
+    attachable: true
