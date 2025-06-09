@@ -3,7 +3,7 @@
 # Ubuntu 24.04 LTS with PyODBC + PyMSSQL dual driver support
 # ==============================================================================
 
-FROM ubuntu:24.04
+FROM ubuntu:24.04 AS base
 
 # Avoid prompts from apt during build
 ENV DEBIAN_FRONTEND=noninteractive
@@ -13,7 +13,7 @@ ENV DEBIAN_FRONTEND=noninteractive
 # ==============================================================================
 
 # Install core system dependencies
-RUN apt-get update && apt-get install -y \
+RUN apt-get update && apt-get install -y --no-install-recommends \
     curl \
     gnupg2 \
     software-properties-common \
@@ -39,6 +39,8 @@ RUN apt-get update && apt-get install -y \
     libffi-dev \
     && rm -rf /var/lib/apt/lists/*
 
+FROM base AS base-mssql-client
+
 # ==============================================================================
 # MICROSOFT SQL SERVER ODBC DRIVERS
 # ==============================================================================
@@ -48,11 +50,11 @@ RUN apt-get update && apt-get install -y \
 RUN curl -fsSL https://packages.microsoft.com/keys/microsoft.asc | gpg --dearmor -o /usr/share/keyrings/microsoft-prod.gpg && \
     echo "deb [arch=amd64,arm64,armhf signed-by=/usr/share/keyrings/microsoft-prod.gpg] https://packages.microsoft.com/ubuntu/24.04/prod noble main" > /etc/apt/sources.list.d/msprod.list && \
     apt-get update && \
-    (ACCEPT_EULA=Y apt-get install -y msodbcsql17 || \
+    (ACCEPT_EULA=Y apt-get install -y --no-install-recommends msodbcsql17 || \
      (echo "Ubuntu 24.04 repo failed, trying 22.04..." && \
       echo "deb [arch=amd64,arm64,armhf signed-by=/usr/share/keyrings/microsoft-prod.gpg] https://packages.microsoft.com/ubuntu/22.04/prod jammy main" > /etc/apt/sources.list.d/msprod.list && \
       apt-get update && \
-      ACCEPT_EULA=Y apt-get install -y msodbcsql17)) && \
+      ACCEPT_EULA=Y apt-get install -y --no-install-recommends msodbcsql17)) && \
     rm -rf /var/lib/apt/lists/*
 
 # Install Microsoft ODBC Driver 18 (secondary option)
