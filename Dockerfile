@@ -1,9 +1,9 @@
 # ==============================================================================
 # MSSQL Python Client Docker Image
-# Ubuntu 20.04 LTS with PyODBC + PyMSSQL dual driver support
+# Ubuntu 22.04 LTS with PyODBC + PyMSSQL dual driver support
 # ==============================================================================
 
-FROM ubuntu:20.04
+FROM ubuntu:22.04
 
 # Avoid prompts from apt during build
 ENV DEBIAN_FRONTEND=noninteractive
@@ -33,7 +33,7 @@ RUN apt-get update && apt-get install -y \
     build-essential \
     gcc \
     g++ \
-    libssl1.1 \
+    libssl3 \
     libssl-dev \
     openssl \
     libffi-dev \
@@ -44,8 +44,8 @@ RUN apt-get update && apt-get install -y \
 # ==============================================================================
 
 # Install Microsoft ODBC Driver 17 (primary, best legacy compatibility)
-RUN curl https://packages.microsoft.com/keys/microsoft.asc | apt-key add - && \
-    curl https://packages.microsoft.com/config/ubuntu/20.04/prod.list > /etc/apt/sources.list.d/msprod.list && \
+RUN curl -fsSL https://packages.microsoft.com/keys/microsoft.asc | gpg --dearmor -o /usr/share/keyrings/microsoft-prod.gpg && \
+    echo "deb [arch=amd64,arm64,armhf signed-by=/usr/share/keyrings/microsoft-prod.gpg] https://packages.microsoft.com/ubuntu/22.04/prod jammy main" > /etc/apt/sources.list.d/msprod.list && \
     apt-get update && \
     ACCEPT_EULA=Y apt-get install -y msodbcsql17 && \
     rm -rf /var/lib/apt/lists/*
@@ -128,7 +128,10 @@ RUN echo "Configuring ODBC drivers..." && \
     echo "[FreeTDS]" > /etc/odbcinst.ini && \
     echo "Description=FreeTDS SQL Server" >> /etc/odbcinst.ini && \
     echo "Driver=/usr/lib/x86_64-linux-gnu/odbc/libtdsodbc.so" >> /etc/odbcinst.ini && \
-    echo "Setup=/usr/lib/x86_64-linux-gnu/odbc/libtdsS.so" >> /etc/odbcinst.ini && \
+    echo "Setup=/usr/lib/x86_64-linux-gnu/odbc/libtdsodbc.so" >> /etc/odbcinst.ini && \
+    echo "Threading=1" >> /etc/odbcinst.ini && \
+    echo "CPTimeout=5" >> /etc/odbcinst.ini && \
+    echo "CPReuse=5" >> /etc/odbcinst.ini && \
     echo "" >> /etc/odbcinst.ini && \
     # Configure Microsoft ODBC Driver 17 if available
     DRIVER17_LIB=$(find /opt/microsoft/msodbcsql17 -name "libmsodbcsql-*.so.*" 2>/dev/null | head -1) && \
@@ -136,6 +139,7 @@ RUN echo "Configuring ODBC drivers..." && \
         echo "[ODBC Driver 17 for SQL Server]" >> /etc/odbcinst.ini && \
         echo "Description=Microsoft ODBC Driver 17 for SQL Server" >> /etc/odbcinst.ini && \
         echo "Driver=$DRIVER17_LIB" >> /etc/odbcinst.ini && \
+        echo "Threading=1" >> /etc/odbcinst.ini && \
         echo "UsageCount=1" >> /etc/odbcinst.ini && \
         echo "" >> /etc/odbcinst.ini; \
     fi && \
@@ -145,10 +149,16 @@ RUN echo "Configuring ODBC drivers..." && \
         echo "[ODBC Driver 18 for SQL Server]" >> /etc/odbcinst.ini && \
         echo "Description=Microsoft ODBC Driver 18 for SQL Server" >> /etc/odbcinst.ini && \
         echo "Driver=$DRIVER18_LIB" >> /etc/odbcinst.ini && \
+        echo "Threading=1" >> /etc/odbcinst.ini && \
         echo "UsageCount=1" >> /etc/odbcinst.ini; \
     fi && \
     # Create ODBC data sources file
     touch /etc/odbc.ini && \
+    # Verify ODBC configuration
+    echo "Verifying ODBC configuration..." && \
+    cat /etc/odbcinst.ini && \
+    echo "ODBC drivers available:" && \
+    (odbcinst -q -d 2>/dev/null || echo "odbcinst query failed, but config file created") && \
     # Configure library search paths
     echo "/opt/microsoft/msodbcsql17/lib64" > /etc/ld.so.conf.d/mssql.conf && \
     echo "/opt/microsoft/msodbcsql18/lib64" >> /etc/ld.so.conf.d/mssql.conf && \
@@ -213,6 +223,10 @@ RUN chmod +x /app/configure_runtime.sh
 
 # Copy Python application
 COPY run_sql_csv.py /app/run_sql_csv.py
+COPY test_connection.py /app/test_connection.py
+COPY test_connection_secure.py /app/test_connection_secure.py
+COPY test_automated.sh /app/test_automated.sh
+RUN chmod +x /app/test_automated.sh
 WORKDIR /app
 
 # Configure environment variables
@@ -235,21 +249,26 @@ RUN echo "=== INSTALLATION VALIDATION ===" && \
     echo "1. ODBC Configuration:" && \
     cat /etc/odbcinst.ini && \
     echo "" && \
-    echo "2. Available ODBC Drivers:" && \
-    odbcinst -q -d 2>/dev/null || echo "odbcinst not available" && \
+    echo "2. Available ODBC Drivers via odbcinst:" && \
+    (odbcinst -q -d 2>/dev/null || echo "odbcinst command failed") && \
     echo "" && \
-    echo "3. FreeTDS Configuration:" && \
+    echo "3. Available ODBC Drivers via PyODBC:" && \
+    /app/venv/bin/python3 -c "import pyodbc; drivers = pyodbc.drivers(); print('PyODBC detected drivers:'); [print(f'  - {d}') for d in drivers]; print(f'Total: {len(drivers)} drivers')" && \
+    echo "" && \
+    echo "4. FreeTDS Configuration:" && \
     head -10 /etc/freetds/freetds.conf && \
     echo "" && \
-    echo "4. Python Environment Tests:" && \
+    echo "5. Python Environment Tests:" && \
     /app/venv/bin/python3 -c "import pyodbc; print('PyODBC version:', pyodbc.version)" && \
     (/app/venv/bin/python3 -c "import pymssql; print('PyMSSQL version:', pymssql.__version__)" || echo "PyMSSQL not available") && \
     echo "" && \
-    echo "5. SSL Configuration Test:" && \
+    echo "6. SSL Configuration Test:" && \
     OPENSSL_CONF="/etc/ssl/openssl_legacy.cnf" /app/venv/bin/python3 -c "import ssl; print('SSL module loaded, OpenSSL version:', ssl.OPENSSL_VERSION)" && \
     echo "" && \
-    echo "6. Driver Library Dependencies:" && \
+    echo "7. Driver Library Dependencies:" && \
     (ldd /usr/lib/x86_64-linux-gnu/odbc/libtdsodbc.so | grep -E "(not found|missing)" || echo "FreeTDS libraries OK") && \
+    (ldd /opt/microsoft/msodbcsql17/lib64/libmsodbcsql-17.10.so.6.1 | grep -E "(not found|missing)" || echo "MSSQL 17 driver libraries OK") && \
+    (ldd /opt/microsoft/msodbcsql18/lib64/libmsodbcsql-18.5.so.1.1 | grep -E "(not found|missing)" || echo "MSSQL 18 driver libraries OK") && \
     echo "" && \
     echo "=== VALIDATION COMPLETE ==="
 

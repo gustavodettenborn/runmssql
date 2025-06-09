@@ -1,6 +1,30 @@
 # MSSQL Client Application
 
-Cliente Python para SQL Server legado com drivers duplos (PyODBC + PyMSSQL), configuração via variáveis de ambiente e compatibilidade SSL/TLS legado.
+Cliente Python para SQL Server legado co## 🛠️ Troubleshooting
+
+```bash
+# Teste completo e seguro (sem expor credenciais)
+docker-compose exec mssql-client python3 test_connection_secure.py
+
+# Teste automatizado com validações
+docker-compose exec mssql-client ./test_automated.sh
+
+# Verificar drivers ODBC
+docker-compose exec mssql-client odbcinst -q -d
+
+# Verificar configuração FreeTDS
+docker-compose exec mssql-client cat /etc/freetds/freetds.conf
+
+# Validar apenas variáveis de ambiente
+python3 load_env.py --validate-only
+```
+
+### Scripts de Teste Disponíveis
+
+- **`test_connection_secure.py`**: Teste completo sem expor credenciais
+- **`test_automated.sh`**: Script automatizado para CI/CD
+- **`load_env.py`**: Carregador seguro de variáveis .env
+- **`test_connection.py`**: Teste original (pode expor credenciais)plos (PyODBC + PyMSSQL), configuração via variáveis de ambiente e compatibilidade SSL/TLS legado. **Ubuntu 22.04 LTS**.
 
 ## ✨ Características
 
@@ -8,7 +32,8 @@ Cliente Python para SQL Server legado com drivers duplos (PyODBC + PyMSSQL), con
 - **Configuração `.env`**: Sem valores hardcoded
 - **SQL Server Legado**: Suporte para versões antigas (2000, 2005, 2008+)
 - **SSL/TLS Legacy**: SECLEVEL=0 para máxima compatibilidade
-- **Docker Ready**: Containerização completa
+- **Docker Ready**: Ubuntu 22.04 LTS containerizado
+- **Testes Seguros**: Scripts de teste que não expõem credenciais
 
 ## 🚀 Início Rápido
 
@@ -20,11 +45,24 @@ nano .env  # Preencha as variáveis obrigatórias
 # Execute
 docker-compose up --build
 
-# Teste conexão
-docker-compose exec mssql-client python3 test_connection.py
+# Teste conexão SEGURO (sem expor credenciais)
+docker-compose exec mssql-client python3 test_connection_secure.py
+
+# Teste automatizado completo
+docker-compose exec mssql-client ./test_automated.sh
 
 # Execute consultas
 docker-compose exec mssql-client python3 run_sql_csv.py
+```
+
+### Ambiente Local (sem Docker)
+
+```bash
+# Carregue variáveis do .env
+python3 load_env.py --show-values
+
+# Teste conexão
+python3 test_connection_secure.py
 ```
 
 ## ⚙️ Configuração
@@ -69,16 +107,20 @@ docker-compose exec mssql-client cat /etc/freetds/freetds.conf
 - **SSL/TLS**: Configurado com SECLEVEL=0 para compatibilidade legada
 - **PyMSSQL**: Fallback automático se instalação falhar
 - **Timeout**: Ajuste `MSSQL_CONNECTION_TIMEOUT` para servidores lentos
+- **Ubuntu 22.04**: Atualizado de 20.04 para melhor suporte a drivers
 
 ## 📁 Arquivos Principais
 
 ```
-├── .env.example          # Template de configuração
-├── docker-compose.yml    # Orquestração Docker
-├── Dockerfile           # Imagem Ubuntu 20.04 + drivers
-├── run_sql_csv.py       # Aplicação principal
-├── test_connection.py   # Testes de conectividade
-└── requirements.txt     # Dependências Python
+├── .env.example              # Template de configuração
+├── docker-compose.yml        # Orquestração Docker
+├── Dockerfile               # Imagem Ubuntu 22.04 + drivers
+├── run_sql_csv.py           # Aplicação principal
+├── test_connection_secure.py # Teste seguro (recomendado)
+├── test_automated.sh        # Script automação CI/CD
+├── load_env.py              # Carregador seguro .env
+├── test_connection.py       # Teste original
+└── requirements.txt         # Dependências Python
 ```
 
 ## ⚠️ Segurança
