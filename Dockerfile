@@ -1,9 +1,9 @@
 # ==============================================================================
 # MSSQL Python Client Docker Image
-# Ubuntu 22.04 LTS with PyODBC + PyMSSQL dual driver support
+# Ubuntu 24.04 LTS with PyODBC + PyMSSQL dual driver support
 # ==============================================================================
 
-FROM ubuntu:22.04
+FROM ubuntu:24.04
 
 # Avoid prompts from apt during build
 ENV DEBIAN_FRONTEND=noninteractive
@@ -44,10 +44,15 @@ RUN apt-get update && apt-get install -y \
 # ==============================================================================
 
 # Install Microsoft ODBC Driver 17 (primary, best legacy compatibility)
+# Try Ubuntu 24.04 repository first, fallback to 22.04 if needed
 RUN curl -fsSL https://packages.microsoft.com/keys/microsoft.asc | gpg --dearmor -o /usr/share/keyrings/microsoft-prod.gpg && \
-    echo "deb [arch=amd64,arm64,armhf signed-by=/usr/share/keyrings/microsoft-prod.gpg] https://packages.microsoft.com/ubuntu/22.04/prod jammy main" > /etc/apt/sources.list.d/msprod.list && \
+    echo "deb [arch=amd64,arm64,armhf signed-by=/usr/share/keyrings/microsoft-prod.gpg] https://packages.microsoft.com/ubuntu/24.04/prod noble main" > /etc/apt/sources.list.d/msprod.list && \
     apt-get update && \
-    ACCEPT_EULA=Y apt-get install -y msodbcsql17 && \
+    (ACCEPT_EULA=Y apt-get install -y msodbcsql17 || \
+     (echo "Ubuntu 24.04 repo failed, trying 22.04..." && \
+      echo "deb [arch=amd64,arm64,armhf signed-by=/usr/share/keyrings/microsoft-prod.gpg] https://packages.microsoft.com/ubuntu/22.04/prod jammy main" > /etc/apt/sources.list.d/msprod.list && \
+      apt-get update && \
+      ACCEPT_EULA=Y apt-get install -y msodbcsql17)) && \
     rm -rf /var/lib/apt/lists/*
 
 # Install Microsoft ODBC Driver 18 (secondary option)
