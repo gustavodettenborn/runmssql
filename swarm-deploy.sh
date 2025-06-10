@@ -123,6 +123,15 @@ remove_stack() {
 
 # Função para entrar no container
 exec_container() {
+    # Se não há argumentos além do primeiro (exec), usa bash
+    if [ $# -eq 1 ]; then
+        local command="/bin/bash"
+    else
+        # Pega todos os argumentos a partir do segundo
+        shift
+        local command="$*"
+    fi
+
     echo -e "${YELLOW}Procurando container ativo...${NC}"
     CONTAINER_ID=$(docker ps --filter "label=com.docker.swarm.service.name=${STACK_NAME}_mssql-client" --format "{{.ID}}" | head -1)
 
@@ -131,8 +140,14 @@ exec_container() {
         exit 1
     fi
 
-    echo -e "${GREEN}Entrando no container: $CONTAINER_ID${NC}"
-    docker exec -it $CONTAINER_ID /bin/bash
+    if [ "$command" = "/bin/bash" ]; then
+        echo -e "${GREEN}Entrando no container: $CONTAINER_ID${NC}"
+        docker exec -it $CONTAINER_ID /bin/bash
+    else
+        echo -e "${GREEN}Executando comando no container: $CONTAINER_ID${NC}"
+        echo -e "${BLUE}Comando: $command${NC}"
+        docker exec -it $CONTAINER_ID sh -c "$command"
+    fi
 }
 
 # Menu principal
@@ -161,7 +176,7 @@ case "${1:-help}" in
         show_logs
         ;;
     "exec")
-        exec_container
+        exec_container "$@"
         ;;
     "remove")
         remove_stack
@@ -193,11 +208,17 @@ case "${1:-help}" in
         echo "  deploy-dev  - Deploy para desenvolvimento (bind mount dos scripts Python)"
         echo "  status      - Mostra status da stack"
         echo "  logs        - Mostra logs do serviço"
-        echo "  exec        - Entra no container ativo"
+        echo "  exec [cmd]  - Entra no container ativo ou executa comando específico"
         echo "  remove      - Remove a stack"
         echo "  redeploy    - Remove e refaz deploy da stack"
         echo "  redeploy-dev- Remove e refaz deploy de desenvolvimento"
         echo "  help        - Mostra esta ajuda"
+        echo ""
+        echo -e "${BLUE}💡 Exemplos de uso do exec:${NC}"
+        echo "   $0 exec                              # Entra no bash do container"
+        echo "   $0 exec ls -lha                      # Lista arquivos no container"
+        echo "   $0 exec ps aux                       # Mostra processos no container"
+        echo "   $0 exec python3 /app/run_sql_csv.py --status  # Executa script Python com argumentos"
         echo ""
         echo -e "${BLUE}💡 Modo Desenvolvimento:${NC}"
         echo "   Use deploy-dev para editar scripts Python sem rebuild"
