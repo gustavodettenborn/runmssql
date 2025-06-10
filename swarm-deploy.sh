@@ -43,9 +43,9 @@ build_image() {
 check_directories() {
     echo -e "${YELLOW}Verificando diretórios...${NC}"
 
-    # Carregar variáveis do .env
+    # Carregar variáveis do .env (excluindo variáveis readonly do sistema)
     if [ -f .env ]; then
-        export $(cat .env | grep -v '^#' | xargs)
+        export $(cat .env | grep -v '^#' | grep -v '^UID=' | grep -v '^GID=' | xargs)
     fi
 
     # Verificar RESULT_DIR
@@ -67,9 +67,11 @@ check_directories() {
 deploy_stack() {
     echo -e "${YELLOW}Fazendo deploy da stack no Docker Swarm...${NC}"
 
-    # Carregar variáveis do .env para o deploy
+    # Carregar variáveis do .env para o deploy (excluindo variáveis readonly)
     set -a
-    source .env
+    if [ -f .env ]; then
+        source <(cat .env | grep -v '^#' | grep -v '^UID=' | grep -v '^GID=')
+    fi
     set +a
 
     docker stack deploy -c $STACK_FILE $STACK_NAME
@@ -80,9 +82,11 @@ deploy_stack() {
 deploy_dev() {
     echo -e "${YELLOW}Deploy de desenvolvimento (scripts Python via bind mount)...${NC}"
 
-    # Carregar variáveis do .env para o deploy
+    # Carregar variáveis do .env para o deploy (excluindo variáveis readonly)
     set -a
-    source .env
+    if [ -f .env ]; then
+        source <(cat .env | grep -v '^#' | grep -v '^UID=' | grep -v '^GID=')
+    fi
     set +a
 
     docker stack deploy -c docker-stack-dev.yml $STACK_NAME

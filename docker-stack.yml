@@ -44,8 +44,8 @@ services:
 
     volumes:
       # Usar volumes do Docker Swarm ao invés de bind mounts
-      - mssql-results:/app/results
-      - mssql-scripts:/app/sql_scripts:ro
+      - ${RESULT_DIR}:/app/results
+      - ${SQL_SCRIPT}:/app/sql_scripts:ro
 
     networks:
       - mssql-network
@@ -71,21 +71,6 @@ services:
     stdin_open: true
     tty: true
     command: /bin/bash
-
-volumes:
-  mssql-results:
-    driver: local
-    driver_opts:
-      type: none
-      device: /home/raysonromulo/Projetos/athenas/athenas-project/src/legacy/data
-      o: bind
-
-  mssql-scripts:
-    driver: local
-    driver_opts:
-      type: none
-      device: /home/raysonromulo/Projetos/athenas/athenas-project/src/legacy/scripts/SQL/mpma
-      o: bind
 
 networks:
   mssql-network:
