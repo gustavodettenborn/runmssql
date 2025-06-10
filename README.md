@@ -49,9 +49,14 @@ docker swarm init
 # Verificar status
 ./swarm-deploy.sh status
 
-# Executar scripts SQL
+# Executar scripts SQL diretamente
+./swarm-deploy.sh exec python3 /app/run_sql_csv.py
+
+# Executar com argumentos específicos
+./swarm-deploy.sh exec python3 /app/run_sql_csv.py --status
+
+# Entrar no bash do container
 ./swarm-deploy.sh exec
-python3 /app/run_sql_csv.py
 
 # Ver logs
 ./swarm-deploy.sh logs
@@ -143,11 +148,31 @@ docker-compose exec -e STATUS_ONLY=true mssql-client python3 run_sql_csv.py
 docker-compose exec -e FORCE_ALL=true mssql-client python3 run_sql_csv.py
 
 # Docker Swarm
-./swarm-deploy.sh exec -e STATUS_ONLY=true
-./swarm-deploy.sh exec -e FORCE_ALL=true -e RESET_LOG=true
+./swarm-deploy.sh exec python3 /app/run_sql_csv.py --status
+./swarm-deploy.sh exec python3 /app/run_sql_csv.py --force-all
 ```
 
 ## 🐳 Docker Swarm
+
+### Comando exec Aprimorado
+
+O comando `exec` do `swarm-deploy.sh` foi aprimorado para suportar execução direta de comandos:
+
+```bash
+# Entrar no bash do container (comportamento original)
+./swarm-deploy.sh exec
+
+# Executar comandos específicos diretamente
+./swarm-deploy.sh exec python3 /app/run_sql_csv.py --status
+./swarm-deploy.sh exec python3 /app/run_sql_csv.py --force-all
+./swarm-deploy.sh exec ls -lha /app
+./swarm-deploy.sh exec ps aux
+./swarm-deploy.sh exec cat /app/requirements.txt
+
+# Comandos com múltiplos argumentos são suportados
+./swarm-deploy.sh exec python3 /app/test_connection_secure.py
+./swarm-deploy.sh exec find /app -name "*.py" -type f
+```
 
 ### Diferenças entre Docker Compose e Docker Swarm
 
@@ -177,8 +202,13 @@ docker-compose exec -e FORCE_ALL=true mssql-client python3 run_sql_csv.py
 # Ver logs
 ./swarm-deploy.sh logs
 
-# Entrar no container
+# Entrar no container (bash interativo)
 ./swarm-deploy.sh exec
+
+# Executar comandos específicos no container
+./swarm-deploy.sh exec python3 /app/run_sql_csv.py --status
+./swarm-deploy.sh exec ls -lha /app
+./swarm-deploy.sh exec ps aux
 
 # Remover stack
 ./swarm-deploy.sh remove
@@ -201,9 +231,12 @@ docker-compose exec -e FORCE_ALL=true mssql-client python3 run_sql_csv.py
 # Mudanças são refletidas imediatamente
 vim run_sql_csv.py
 
-# Execute dentro do container
+# Execute comandos diretamente no container
+./swarm-deploy.sh exec python3 /app/run_sql_csv.py
+./swarm-deploy.sh exec python3 /app/run_sql_csv.py --status
+
+# Ou entre no bash para sessão interativa
 ./swarm-deploy.sh exec
-python3 /app/run_sql_csv.py
 ```
 
 ### Fluxo de Trabalho Recomendado
@@ -229,15 +262,25 @@ python3 /app/run_sql_csv.py
 ```bash
 # Teste completo e seguro (sem expor credenciais)
 docker-compose exec mssql-client python3 test_connection_secure.py
+# Ou via Docker Swarm
+./swarm-deploy.sh exec python3 /app/test_connection_secure.py
 
 # Teste automatizado com validações
 docker-compose exec mssql-client ./test_automated.sh
+# Ou via Docker Swarm
+./swarm-deploy.sh exec /app/test_automated.sh
 
 # Verificar drivers ODBC
-docker-compose exec mssql-client odbcinst -q -d
+./swarm-deploy.sh exec odbcinst -q -d
 
 # Verificar configuração FreeTDS
-docker-compose exec mssql-client cat /etc/freetds/freetds.conf
+./swarm-deploy.sh exec cat /etc/freetds/freetds.conf
+
+# Verificar arquivos da aplicação
+./swarm-deploy.sh exec ls -lha /app
+
+# Verificar processos no container
+./swarm-deploy.sh exec ps aux
 
 # Validar apenas variáveis de ambiente
 python3 load_env.py --validate-only
@@ -260,8 +303,10 @@ docker image rm mssql-pyodbc-client:latest
 docker stack ps mssql-client-stack
 
 # Verifica os mounts
-./swarm-deploy.sh exec
-mount | grep app
+./swarm-deploy.sh exec mount | grep app
+
+# Verifica arquivos Python no container
+./swarm-deploy.sh exec ls -lha /app/*.py
 ```
 
 #### ❌ **Container não inicia**
