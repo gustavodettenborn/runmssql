@@ -1,12 +1,5 @@
 # MSSQL Client Application
 
-Cliente Python para SQL Server legado com múltiplos drivers (PyODBC + PyMSSQL), configuração via variáveis de ambiente e compatibilidade SSL/TLS legado. **Ubuntu 24.04 LTS**.
-
-> 🤖 **Desenvolvido com Claude Sonnet 4 (Preview) no GitHub Copilot**
-> Este projeto foi desenvolvido com assistência de IA avançada para garantir as melhores práticas de desenvolvimento e arquitetura de software.
-
-## ✨ CaracterísticasQL Client Application
-
 Cliente Python para SQL Server legado com múltiplos drivers (PyODBC + PyMSSQL), configuração via variáveis de ambiente e compatibilidade SSL/TLS legado. **Ubuntu 22.04 LTS**.
 
 ## ✨ Características
@@ -24,13 +17,29 @@ Cliente Python para SQL Server legado com múltiplos drivers (PyODBC + PyMSSQL),
 
 ## 🚀 Início Rápido
 
-### Docker Swarm
+### Docker Compose (Desenvolvimento)
 
 ```bash
 # Configure ambiente
-cp config/.env.example .env
+cp .env.example .env
 nano .env  # Preencha as variáveis obrigatórias
 
+# Execute
+docker-compose up --build
+
+# Teste conexão SEGURO (sem expor credenciais)
+docker-compose exec mssql-client python3 test_connection_secure.py
+
+# Teste automatizado completo
+docker-compose exec mssql-client ./test_automated.sh
+
+# Execute consultas
+docker-compose exec mssql-client python3 run_sql_csv.py
+```
+
+### Docker Swarm (Produção)
+
+```bash
 # Inicialize o swarm (se necessário)
 docker swarm init
 
@@ -57,13 +66,13 @@ docker swarm init
 
 ```bash
 # Carregue variáveis do .env
-python3 src/utils/load_env.py --show-values
+python3 load_env.py --show-values
 
 # Teste conexão
-python3 tests/integration/test_connection_secure.py
+python3 test_connection_secure.py
 
 # Execute scripts com controle
-python3 src/main/run_sql_csv.py --help
+python3 run_sql_csv.py --help
 ```
 
 ## ⚙️ Configuração
@@ -113,32 +122,34 @@ SCRIPTS_DIR=/path/to/scripts       # Diretório dos scripts SQL
 
 ```bash
 # Execução normal (apenas scripts pendentes)
-python3 src/main/run_sql_csv.py
+python3 run_sql_csv.py
 
 # Ver apenas status dos scripts
-python3 src/main/run_sql_csv.py --status
+python3 run_sql_csv.py --status
 
 # Forçar execução de todos os scripts
-python3 src/main/run_sql_csv.py --force-all
+python3 run_sql_csv.py --force-all
 
 # Limpar log e executar
-python3 src/main/run_sql_csv.py --reset-log
+python3 run_sql_csv.py --reset-log
 
 # Usar diretório customizado
-python3 src/main/run_sql_csv.py --scripts-dir ./queries
+python3 run_sql_csv.py --scripts-dir ./queries
 
 # Combinações
-python3 src/main/run_sql_csv.py --force-all --scripts-dir /custom/path
+python3 run_sql_csv.py --force-all --scripts-dir /custom/path
 ```
 
-### Exemplos de Uso via Docker Swarm
+### Exemplos de Uso via Variáveis de Ambiente
 
 ```bash
-# Ver apenas status dos scripts
-./scripts/deployment/swarm-deploy.sh exec python3 /app/src/main/run_sql_csv.py --status
+# Docker Compose
+docker-compose exec -e STATUS_ONLY=true mssql-client python3 run_sql_csv.py
+docker-compose exec -e FORCE_ALL=true mssql-client python3 run_sql_csv.py
 
-# Forçar execução de todos os scripts
-./scripts/deployment/swarm-deploy.sh exec python3 /app/src/main/run_sql_csv.py --force-all
+# Docker Swarm
+./swarm-deploy.sh exec python3 /app/run_sql_csv.py --status
+./swarm-deploy.sh exec python3 /app/run_sql_csv.py --force-all
 ```
 
 ## 🐳 Docker Swarm
@@ -163,13 +174,13 @@ O comando `exec` do `swarm-deploy.sh` foi aprimorado para suportar execução di
 ./swarm-deploy.sh exec find /app -name "*.py" -type f
 ```
 
-### Diferenças entre Docker Swarm (Produção) e Desenvolvimento Local
+### Diferenças entre Docker Compose e Docker Swarm
 
-| Aspecto | Desenvolvimento Local | Docker Swarm |
+| Aspecto | Docker Compose | Docker Swarm |
 |---------|----------------|-------------|
 | **Escopo** | Máquina única | Cluster (múltiplas máquinas) |
-| **Volumes** | Caminhos locais | Volumes gerenciados |
-| **Uso** | Desenvolvimento e testes | Produção |
+| **Volumes** | Bind mounts diretos | Volumes gerenciados |
+| **Uso** | Desenvolvimento | Produção |
 | **Alta Disponibilidade** | ❌ | ✅ |
 | **Load Balancing** | ❌ | ✅ Automático |
 
@@ -250,25 +261,29 @@ vim run_sql_csv.py
 
 ```bash
 # Teste completo e seguro (sem expor credenciais)
-./scripts/deployment/swarm-deploy.sh exec python3 /app/tests/integration/test_connection_secure.py
+docker-compose exec mssql-client python3 test_connection_secure.py
+# Ou via Docker Swarm
+./swarm-deploy.sh exec python3 /app/test_connection_secure.py
 
 # Teste automatizado com validações
-./scripts/deployment/swarm-deploy.sh exec /app/scripts/testing/test_automated.sh
+docker-compose exec mssql-client ./test_automated.sh
+# Ou via Docker Swarm
+./swarm-deploy.sh exec /app/test_automated.sh
 
 # Verificar drivers ODBC
-./scripts/deployment/swarm-deploy.sh exec odbcinst -q -d
+./swarm-deploy.sh exec odbcinst -q -d
 
 # Verificar configuração FreeTDS
-./scripts/deployment/swarm-deploy.sh exec cat /etc/freetds/freetds.conf
+./swarm-deploy.sh exec cat /etc/freetds/freetds.conf
 
 # Verificar arquivos da aplicação
-./scripts/deployment/swarm-deploy.sh exec ls -lha /app
+./swarm-deploy.sh exec ls -lha /app
 
 # Verificar processos no container
-./scripts/deployment/swarm-deploy.sh exec ps aux
+./swarm-deploy.sh exec ps aux
 
-# Validar apenas variáveis de ambiente (local)
-python3 src/utils/load_env.py --validate-only
+# Validar apenas variáveis de ambiente
+python3 load_env.py --validate-only
 ```
 
 ### Problemas Comuns
@@ -279,7 +294,7 @@ python3 src/utils/load_env.py --validate-only
 ```bash
 # Força rebuild completo
 docker image rm mssql-pyodbc-client:latest
-./scripts/deployment/swarm-deploy.sh redeploy
+./swarm-deploy.sh redeploy
 ```
 
 **Modo Desenvolvimento:**
@@ -288,16 +303,16 @@ docker image rm mssql-pyodbc-client:latest
 docker stack ps mssql-client-stack
 
 # Verifica os mounts
-./scripts/deployment/swarm-deploy.sh exec mount | grep app
+./swarm-deploy.sh exec mount | grep app
 
 # Verifica arquivos Python no container
-./scripts/deployment/swarm-deploy.sh exec ls -lha /app/*.py
+./swarm-deploy.sh exec ls -lha /app/*.py
 ```
 
 #### ❌ **Container não inicia**
 ```bash
 # Ver logs detalhados
-./scripts/deployment/swarm-deploy.sh logs
+./swarm-deploy.sh logs
 
 # Verificar recursos
 docker service ls
@@ -314,27 +329,19 @@ docker service ps mssql-client-stack_mssql-client
 
 ```
 ├── .env.example              # Template de configuração
-├── docker/                   # Configurações Docker
-│   ├── Dockerfile           # Imagem Ubuntu 24.04 + drivers
-│   └── stacks/              # Docker Swarm stacks
-│       ├── docker-stack.yml # Stack principal
-│       └── docker-stack-dev.yml # Stack desenvolvimento
-├── src/                      # Código fonte Python
-│   ├── main/                # Aplicação principal
-│   │   └── run_sql_csv.py   # App principal com controle de execução
-│   └── utils/               # Utilitários
-│       └── load_env.py      # Carregador seguro .env
-├── tests/                    # Testes
-│   ├── integration/         # Testes de integração
-│   │   └── test_connection_secure.py # Teste seguro (recomendado)
-│   └── demo/                # Testes demonstrativos
-├── scripts/                  # Scripts shell
-│   ├── deployment/          # Scripts de deploy
-│   │   └── swarm-deploy.sh  # Script de deploy e gerenciamento Swarm
-│   └── testing/             # Scripts de teste
-│       └── test_automated.sh # Script automação CI/CD
+├── docker-compose.yml        # Orquestração Docker (desenvolvimento)
+├── docker-stack.yml          # Stack Docker Swarm (produção)
+├── docker-stack-dev.yml      # Stack Docker Swarm (desenvolvimento)
+├── swarm-deploy.sh           # Script de deploy e gerenciamento Swarm
+├── Dockerfile               # Imagem Ubuntu 22.04 + drivers
+├── run_sql_csv.py           # Aplicação principal com controle de execução
+├── test_connection_secure.py # Teste seguro (recomendado)
+├── test_automated.sh        # Script automação CI/CD
+├── load_env.py              # Carregador seguro .env
 ├── requirements.txt         # Dependências Python
-├── REORGANIZATION_PROPOSAL.md # Documentação da reorganização
+├── EXECUTION-CONTROL.md     # Documentação do sistema de controle
+├── DOCKER-SWARM.md         # Documentação Docker Swarm
+├── PYTHON-UPDATES.md       # Processo de atualização de scripts
 └── README.md               # Este arquivo
 ```
 

@@ -14,9 +14,10 @@ BLUE='\033[0;34m'
 NC='\033[0m' # No Color
 
 # Configurações
-STACK_NAME="mssql-client-stack"
-IMAGE_NAME="mssql-pyodbc-client:latest"
-STACK_FILE="docker-stack.yml"
+STACK_NAME="${STACK_NAME:-mssql-client-stack}"
+IMAGE_NAME="${IMAGE_NAME:-mssql-pyodbc-client:latest}"
+STACK_FILE="docker/stacks/docker-stack.yml"
+DEV_STACK_FILE="docker/stacks/docker-stack-dev.yml"
 
 echo -e "${BLUE}=== Docker Swarm Deploy Script ===${NC}"
 
@@ -35,7 +36,7 @@ check_swarm() {
 # Função para build da imagem
 build_image() {
     echo -e "${YELLOW}Fazendo build da imagem Docker...${NC}"
-    docker build -t $IMAGE_NAME .
+    docker build -t $IMAGE_NAME -f docker/Dockerfile .
     echo -e "${GREEN}Build concluído!${NC}"
 }
 
@@ -89,7 +90,7 @@ deploy_dev() {
     fi
     set +a
 
-    docker stack deploy -c docker-stack-dev.yml $STACK_NAME
+    docker stack deploy -c $DEV_STACK_FILE $STACK_NAME
     echo -e "${GREEN}Stack de desenvolvimento deployada!${NC}"
     echo -e "${BLUE}📝 Scripts Python serão lidos diretamente do host${NC}"
     echo -e "${BLUE}   Mudanças nos .py serão refletidas imediatamente${NC}"

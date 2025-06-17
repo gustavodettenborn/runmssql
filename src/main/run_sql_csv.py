@@ -3,15 +3,15 @@
 run_sql_csv.py - Versão atualizada com fallback PyMSSQL e controle de execução
 """
 
+import argparse
+import hashlib
+import json
 import os
 import socket
-import warnings
-import json
-import hashlib
-import argparse
 import traceback
+import warnings
 from datetime import datetime
-from typing import Optional, Dict, List
+from typing import Dict, List, Optional
 
 import pandas as pd
 
@@ -40,8 +40,10 @@ warnings.filterwarnings('ignore', category=UserWarning)
 
 
 class SQLToCsv:
-    def __init__(self, execution_log_path="/app/results/execution_log.json"):
+    def __init__(self, execution_log_path=None):
         """Inicializa a conexão com SQL Server usando variáveis de ambiente"""
+        if execution_log_path is None:
+            execution_log_path = os.getenv('EXECUTION_LOG_PATH', '/app/results/execution_log.json')
 
         # Lê variáveis de ambiente
         self.server = os.getenv('MSSQL_SERVER', 'localhost')
@@ -536,7 +538,7 @@ Variáveis de ambiente (sobrescritas pelos argumentos CLI):
         '--scripts-dir',
         type=str,
         default=None,
-        help='Diretório contendo os scripts SQL (padrão: /app/sql_scripts)'
+        help='Diretório contendo os scripts SQL (padrão: variável SCRIPTS_DIR ou /app/sql_scripts)'
     )
 
     # Parse dos argumentos
@@ -545,7 +547,7 @@ Variáveis de ambiente (sobrescritas pelos argumentos CLI):
     class Config:
         def __init__(self, args):
             # Valores padrão
-            default_scripts_dir = '/app/sql_scripts'
+            default_scripts_dir = os.getenv('SCRIPTS_DIR', '/app/sql_scripts')
 
             # Prioridade: Argumentos CLI > Variáveis de ambiente > Padrão
 

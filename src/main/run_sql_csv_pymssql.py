@@ -362,7 +362,7 @@ def main():
         db.execute_sql_to_csv(test_query, "teste_conexao_pymssql.csv")
 
         # Processamento em lote
-        sql_scripts_dir = "/app/sql_scripts"
+        sql_scripts_dir = os.getenv('SCRIPTS_DIR', '/app/sql_scripts')
         if os.path.exists(sql_scripts_dir) and os.path.isdir(sql_scripts_dir):
             print("\n--- Processamento em Lote ---")
             sql_files = [f for f in os.listdir(sql_scripts_dir)

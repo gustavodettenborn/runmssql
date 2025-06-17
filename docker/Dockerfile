@@ -58,7 +58,7 @@ RUN curl -fsSL https://packages.microsoft.com/keys/microsoft.asc | gpg --dearmor
     rm -rf /var/lib/apt/lists/*
 
 # Install Microsoft ODBC Driver 18 (secondary option)
-COPY mssql.sh /tmp/mssql.sh
+COPY scripts/setup/mssql.sh /tmp/mssql.sh
 RUN chmod +x /tmp/mssql.sh && /tmp/mssql.sh && rm -f /tmp/mssql.sh
 
 # ==============================================================================
@@ -66,7 +66,7 @@ RUN chmod +x /tmp/mssql.sh && /tmp/mssql.sh && rm -f /tmp/mssql.sh
 # ==============================================================================
 
 # Copy requirements for better Docker layer caching
-COPY requirements.txt /app/requirements.txt
+COPY ./requirements.txt /app/requirements.txt
 
 # Create and configure Python virtual environment
 RUN python3 -m venv /app/venv && \
@@ -229,11 +229,17 @@ EOF
 RUN chmod +x /app/configure_runtime.sh
 
 # Copy Python application
-COPY run_sql_csv.py /app/run_sql_csv.py
-COPY test_connection.py /app/test_connection.py
-COPY test_connection_secure.py /app/test_connection_secure.py
-COPY test_automated.sh /app/test_automated.sh
-RUN chmod +x /app/test_automated.sh
+COPY src/main/run_sql_csv.py /app/src/main/run_sql_csv.py
+COPY src/utils/load_env.py /app/src/utils/load_env.py
+COPY tests/unit/test_connection.py /app/tests/unit/test_connection.py
+COPY tests/integration/test_connection_secure.py /app/tests/integration/test_connection_secure.py
+COPY scripts/testing/test_automated.sh /app/scripts/testing/test_automated.sh
+RUN chmod +x /app/scripts/testing/test_automated.sh
+
+# Create __init__.py files for Python modules
+RUN mkdir -p /app/src /app/src/main /app/src/utils /app/tests /app/tests/unit /app/tests/integration && \
+    touch /app/src/__init__.py /app/src/main/__init__.py /app/src/utils/__init__.py /app/tests/__init__.py /app/tests/unit/__init__.py /app/tests/integration/__init__.py
+
 WORKDIR /app
 
 # Configure environment variables
