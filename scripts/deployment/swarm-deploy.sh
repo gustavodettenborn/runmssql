@@ -45,8 +45,8 @@ check_directories() {
     echo -e "${YELLOW}Verificando diretórios...${NC}"
 
     # Carregar variáveis do .env (excluindo variáveis readonly do sistema)
-    if [ -f .env ]; then
-        export $(cat .env | grep -v '^#' | grep -v '^UID=' | grep -v '^GID=' | xargs)
+    if [ -f docker/.env ]; then
+        export $(cat docker/.env | grep -v '^#' | grep -v '^UID=' | grep -v '^GID=' | xargs)
     fi
 
     # Verificar RESULT_DIR
@@ -70,8 +70,8 @@ deploy_stack() {
 
     # Carregar variáveis do .env para o deploy (excluindo variáveis readonly)
     set -a
-    if [ -f .env ]; then
-        source <(cat .env | grep -v '^#' | grep -v '^UID=' | grep -v '^GID=')
+    if [ -f docker/.env ]; then
+        source <(cat docker/.env | grep -v '^#' | grep -v '^UID=' | grep -v '^GID=')
     fi
     set +a
 
@@ -85,8 +85,8 @@ deploy_dev() {
 
     # Carregar variáveis do .env para o deploy (excluindo variáveis readonly)
     set -a
-    if [ -f .env ]; then
-        source <(cat .env | grep -v '^#' | grep -v '^UID=' | grep -v '^GID=')
+    if [ -f docker/.env ]; then
+        source <(cat docker/.env | grep -v '^#' | grep -v '^UID=' | grep -v '^GID=')
     fi
     set +a
 
